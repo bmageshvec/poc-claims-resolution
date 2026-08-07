@@ -1,0 +1,34 @@
+sequenceDiagram
+    autonumber
+    participant FE as Customer App (no PAN)
+    participant BFF as Customer BFF
+    participant CI as Claim Intake Svc
+    participant TX as Transaction Retrieval Svc
+    participant SR as Scheme Resolution Svc
+    participant BIN as BIN Range Store<br/>(DynamoDB, weekly refresh)
+    participant TV as Token Vault (PCI)
+    participant DC as Dispute Case Svc
+    participant NR as Network Router
+    participant MC as mcom-adapter
+    participant VR as vrol-adapter
+
+    FE->>BFF: POST /claims {cardRef, txnIds[], reason, statement}
+    Note over FE,BFF: cardRef is an opaque token.<br/>No PAN, no BIN, no scheme on the wire.
+    BFF->>CI: CreateClaim(customerId, cardRef, txnIds)
+    CI->>TX: GetTransactions(txnIds, cardRef)
+    TX-->>CI: canonical DisputedTransaction[]<br/>(incl. settlementNetwork, acquirerBIN, MCC, ARN)
+    CI->>SR: ResolveScheme(cardRef, transaction)
+    SR->>TV: Dereference(cardRef) -> accountRange (8-digit)
+    TV-->>SR: accountRange (inside PCI zone only)
+    SR->>BIN: Lookup(accountRange, effectiveDate=txnDate)
+    BIN-->>SR: {brand:MASTERCARD, product:WORLD, region:US, coBadge:[]}
+    SR->>SR: Reconcile card brand vs settlementNetwork<br/>settlementNetwork WINS on conflict
+    SR-->>CI: SchemeDecision{network:MCOM, ruleSetVersion:MDR-2026.1,<br/>basis:SETTLEMENT_NETWORK, decisionId}
+    CI->>DC: ClaimAccepted(+SchemeDecision)
+    DC->>NR: SubmitNetworkCycle(caseId, cycle=FIRST_CHARGEBACK)
+    NR->>NR: strategy lookup by SchemeDecision.network
+    alt MASTERCARD
+        NR->>MC: submit(canonical DisputeCycleCommand)
+    else VISA
+        NR->>VR: submit(canonical DisputeCycleCommand)
+    end

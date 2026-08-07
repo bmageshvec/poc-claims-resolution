@@ -1,0 +1,30 @@
+graph TB
+    subgraph CORE["CORE DOMAIN — competitive differentiation, build & own"]
+        C1["Dispute Case Management<br/>& Lifecycle"]
+        C2["Eligibility, Rights<br/>& Dispute Rules"]
+        C3["Network Exchange<br/>(scheme lifecycle)"]
+        C4["Claim Intake &<br/>Triage"]
+    end
+    subgraph SUPPORT["SUPPORTING SUBDOMAINS — build, but commodity logic"]
+        S1["Evidence &<br/>Document Mgmt"]
+        S2["Financial Posting<br/>& Recovery"]
+        S3["Compliance,<br/>Timers & SLA"]
+        S4["Work Assignment<br/>& Queueing"]
+        S5["Partner Integration<br/>(PAI)"]
+        S6["Correspondence &<br/>Notification"]
+    end
+    subgraph GENERIC["GENERIC SUBDOMAINS — buy / reuse / integrate"]
+        G1["Identity & Access<br/>(Cognito / PingID)"]
+        G2["Customer, Account<br/>& Card Reference"]
+        G3["Transaction Retrieval<br/>(core banking / switch)"]
+        G4["Fraud & Risk Scoring"]
+        G5["Reporting, Analytics<br/>& Audit"]
+        G6["Tokenization /<br/>Card Vault"]
+    end
+
+    classDef core fill:#0d3b66,color:#fff,stroke:#0d3b66,stroke-width:2px
+    classDef sup fill:#457b9d,color:#fff,stroke:#1d3557
+    classDef gen fill:#adb5bd,color:#000,stroke:#6c757d
+    class C1,C2,C3,C4 core
+    class S1,S2,S3,S4,S5,S6 sup
+    class G1,G2,G3,G4,G5,G6 gen

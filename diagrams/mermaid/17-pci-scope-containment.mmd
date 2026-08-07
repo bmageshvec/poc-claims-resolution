@@ -1,0 +1,21 @@
+graph LR
+    subgraph OUT["OUT OF PCI SCOPE"]
+        A["Web / mobile apps"]
+        B["BFFs"]
+        C["claim-intake, dispute-case,<br/>rules, evidence, posting,<br/>timers, work, correspondence"]
+        D["Event backbone (MSK)<br/>schema rule: no PAN field"]
+    end
+    subgraph IN["PCI CDE — minimised"]
+        E["scheme-resolution-svc<br/>(account range only, in-memory)"]
+        F["mcom-adapter / vrol-adapter<br/>(PAN at last mile)"]
+        G["Token Vault (existing)"]
+    end
+    A -->|cardRef token| B --> C
+    C -->|cardRef token| E
+    E -->|network decision, no PAN| C
+    C -->|cardRef token| F
+    F --> G
+    classDef out fill:#2a9d8f,color:#fff
+    classDef in fill:#e63946,color:#fff
+    class A,B,C,D out
+    class E,F,G in

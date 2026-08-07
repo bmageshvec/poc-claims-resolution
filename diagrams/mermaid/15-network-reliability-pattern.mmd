@@ -1,0 +1,17 @@
+graph LR
+    A["dispute-case-svc<br/>decision"] --> B["network-router-svc<br/>transactional outbox<br/>(DynamoDB)"]
+    B --> C["SQS FIFO<br/>MessageGroupId = caseId<br/>(strict order per case)"]
+    C --> D["scheme adapter"]
+    D --> E{"Idempotency<br/>guard"}
+    E -->|"already sent"| F["return prior result"]
+    E -->|"new"| G["Journal (WORM)<br/>BEFORE transmit"]
+    G --> H["Circuit breaker<br/>+ token-bucket rate limit"]
+    H --> I["Scheme API"]
+    I -->|"5xx / timeout"| J["Retry w/ jitter<br/>→ DLQ after N"]
+    J --> K["Ops alert +<br/>time-bar risk escalation"]
+    I -->|"2xx"| L["Journal response<br/>→ publish canonical event"]
+
+    classDef ok fill:#2a9d8f,color:#fff
+    classDef warn fill:#e76f51,color:#fff
+    class L,F ok
+    class J,K warn

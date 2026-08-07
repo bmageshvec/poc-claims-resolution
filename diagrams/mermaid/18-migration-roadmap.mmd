@@ -1,0 +1,39 @@
+graph LR
+    subgraph P0["Phase 0 — Foundation (0-3m)"]
+        A1["AWS landing zone, EKS,<br/>MSK, schema registry"]
+        A2["Canonical event model<br/>+ published language"]
+        A3["pega-bridge-svc<br/>(bidirectional ACL)"]
+    end
+    subgraph P1["Phase 1 — Read-side strangle (3-6m)"]
+        B1["reporting-projection-svc<br/>off Pega CDC"]
+        B2["party-reference +<br/>transaction-retrieval ACLs"]
+        B3["Customer status-tracking UI<br/>leaves Pega"]
+    end
+    subgraph P2["Phase 2 — Intake strangle (6-10m)"]
+        C1["claim-intake-svc live<br/>for all channels"]
+        C2["scheme-resolution-svc<br/>+ BIN store"]
+        C3["evidence-svc<br/>(Pega attachments migrated)"]
+    end
+    subgraph P3["Phase 3 — MC fraud vertical (10-16m)"]
+        D1["dispute-case-svc +<br/>dispute-rules-svc (MDR ruleset)"]
+        D2["mcom-adapter-svc<br/>+ Mastercard certification"]
+        D3["financial-posting +<br/>compliance-timer"]
+        D4["Cut over MC fraud<br/>reason codes only"]
+    end
+    subgraph P4["Phase 4 — Widen (16-24m)"]
+        E1["MC non-fraud codes"]
+        E2["vrol-adapter + VCR ruleset"]
+        E3["partner-bff / PAI GA"]
+        E4["Issuer ops workspace<br/>replaces Pega desktop"]
+    end
+    subgraph P5["Phase 5 — Decommission (24-30m)"]
+        F1["Legacy case backfill /<br/>run-off in place"]
+        F2["Retire pega-bridge"]
+        F3["Decommission Pega SD"]
+    end
+    P0 --> P1 --> P2 --> P3 --> P4 --> P5
+
+    classDef p fill:#457b9d,color:#fff
+    classDef last fill:#2a9d8f,color:#fff
+    class P0,P1,P2,P3,P4 p
+    class P5 last

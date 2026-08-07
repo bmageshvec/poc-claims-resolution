@@ -1,0 +1,30 @@
+classDiagram
+    class NetworkRouter {
+        +submit(DisputeCycleCommand) NetworkExchangeId
+        -resolveAdapter(SchemeDecision) SchemeAdapter
+    }
+    class SchemeAdapter {
+        <<interface>>
+        +submitChargeback(cmd)
+        +submitPreArbitration(cmd)
+        +submitArbitration(cmd)
+        +fetchInbound() SchemeMessage[]
+        +supports() Network
+    }
+    class McomAdapter {
+        -MastercomClient client
+        -McomTranslator acl
+        +supports() MASTERCARD
+    }
+    class VrolAdapter {
+        -VrolClient client
+        -VrolTranslator acl
+        +supports() VISA
+    }
+    class FutureAmexAdapter {
+        +supports() AMEX
+    }
+    NetworkRouter --> SchemeAdapter
+    SchemeAdapter <|.. McomAdapter
+    SchemeAdapter <|.. VrolAdapter
+    SchemeAdapter <|.. FutureAmexAdapter

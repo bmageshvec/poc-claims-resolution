@@ -1,0 +1,22 @@
+graph LR
+    subgraph PEGA["Pega Smart Dispute — single deployable, single schema"]
+        UI["Agent Desktop +<br/>Customer Portal<br/>(Sections, Harnesses)"]
+        FLOW["Case Flows<br/>(Dispute lifecycle)"]
+        RULES["Decision Tables<br/>(reason codes, time bars)"]
+        FIN["Adjustment / GL<br/>posting activities"]
+        CONN["Connect-REST /<br/>Connect-SOAP<br/>Mastercom + VROL"]
+        DB[("Single PegaRULES +<br/>PegaDATA schema")]
+    end
+    UI --- FLOW --- RULES --- FIN --- CONN
+    UI --- DB
+    FLOW --- DB
+    RULES --- DB
+    FIN --- DB
+    CONN --- DB
+
+    N1["Mastercard release<br/>(2x/year)"] -.->|forces full regression| PEGA
+    N2["Visa release<br/>(2x/year)"] -.->|forces full regression| PEGA
+    N3["Reg E / Reg Z change"] -.->|forces full regression| PEGA
+
+    classDef bad fill:#e63946,color:#fff,stroke:#9d0208
+    class PEGA bad

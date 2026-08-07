@@ -1,0 +1,38 @@
+sequenceDiagram
+    autonumber
+    participant MCOM as MCOM
+    participant MC as mcom-adapter-svc
+    participant DC as dispute-case-svc
+    participant NF as notification-fanout-svc
+    participant PB as partner-bff (PAI)
+    actor AQ as Acquirer
+    actor ME as Merchant
+    participant EV as evidence-svc
+    participant RU as dispute-rules-svc
+
+    Note over MCOM,MC: Path A — network-mediated (the default)
+    MCOM-->>MC: Second presentment received
+    MC->>MC: ACL translate → canonical NetworkResponse
+    MC--)DC: NetworkResponseReceived(cycle=2, reason, docs)
+    DC->>DC: stage → ADJUDICATE
+
+    Note over NF,ME: Path B — direct partner engagement via PAI
+    DC--)NF: CaseStageChanged
+    NF->>PB: build PartnerCaseView (scoped projection)
+    PB-->>AQ: webhook POST /events (signed, mTLS)
+    PB-->>ME: webhook POST /events (signed, mTLS)
+    AQ->>PB: GET /v1/disputes/{partnerCaseRef}
+    PB-->>AQ: PartnerCaseView (no cardholder PII beyond scheme minimum)
+    ME->>PB: POST /v1/disputes/{ref}/evidence (multipart)
+    PB->>EV: store + AV scan + classify + redact
+    EV-->>PB: evidenceId
+    ME->>PB: POST /v1/disputes/{ref}/response {action: DEFEND, evidenceIds[]}
+    PB->>RU: validate response against scheme requirements
+    RU-->>PB: valid / missing CE3.0 elements
+    PB--)DC: PartnerResponseReceived
+    DC->>DC: merge into case timeline (partner data = untrusted until validated)
+    alt Merchant accepts liability
+        ME->>PB: POST /response {action: ACCEPT}
+        PB--)DC: PartnerResponseReceived(ACCEPT)
+        DC->>DC: close case in customer's favour (deflection)
+    end

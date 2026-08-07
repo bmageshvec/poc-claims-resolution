@@ -1,0 +1,56 @@
+graph TB
+    subgraph DCS["dispute-case-svc"]
+        API["Case REST API<br/>[Spring MVC]<br/>commands + queries"]
+        CONS["Event Consumers<br/>[Kafka listeners]"]
+        APPL["Application Services<br/>OpenCase, AssessEligibility,<br/>Adjudicate, Escalate, Close"]
+        AGG["<b>DisputeCase Aggregate</b><br/>invariants + stage machine"]
+        SM["Stage Machine<br/>scheme-specific transition table"]
+        SAGA["Saga Coordinator<br/>[Step Functions client]"]
+        POL["Domain Policies<br/>ReopenPolicy, CyclePolicy,<br/>WithdrawalPolicy"]
+        REPO["CaseRepository<br/>[JPA + optimistic lock]"]
+        OUT["Transactional Outbox<br/>[same-tx insert]"]
+        PUB["Event Publisher<br/>[outbox relay → MSK]"]
+        ACLR["ACL: RulesTranslator<br/>scheme vocab → domain vocab"]
+        ACLF["ACL: FraudTranslator"]
+        PORT["Ports: NetworkPort,<br/>PostingPort, TimerPort,<br/>EvidencePort"]
+    end
+
+    API --> APPL
+    CONS --> APPL
+    APPL --> AGG
+    AGG --> SM
+    AGG --> POL
+    APPL --> SAGA
+    APPL --> REPO
+    REPO --> OUT
+    OUT --> PUB
+    APPL --> ACLR
+    APPL --> ACLF
+    APPL --> PORT
+
+    DB[("Aurora PG<br/>case, case_event,<br/>outbox")]
+    REPO --- DB
+    OUT --- DB
+
+    RULES["dispute-rules-svc"]
+    FRAUD["fraud-gateway-svc"]
+    NET["network-router-svc"]
+    FIN["financial-posting-svc"]
+    TIM["compliance-timer-svc"]
+    EVD["evidence-svc"]
+    MSKX[("MSK")]
+
+    ACLR --> RULES
+    ACLF --> FRAUD
+    PORT --> NET
+    PORT --> FIN
+    PORT --> TIM
+    PORT --> EVD
+    PUB --> MSKX
+
+    classDef c fill:#0d3b66,color:#fff
+    classDef acl fill:#e76f51,color:#fff
+    classDef ext fill:#adb5bd,color:#000
+    class API,CONS,APPL,AGG,SM,SAGA,POL,REPO,OUT,PUB,PORT c
+    class ACLR,ACLF acl
+    class RULES,FRAUD,NET,FIN,TIM,EVD,MSKX,DB ext

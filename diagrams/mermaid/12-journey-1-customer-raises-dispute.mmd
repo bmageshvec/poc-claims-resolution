@@ -1,0 +1,47 @@
+sequenceDiagram
+    autonumber
+    actor CU as Customer
+    participant APP as Web/Mobile
+    participant BFF as customer-bff
+    participant CI as claim-intake-svc
+    participant TR as transaction-retrieval-svc
+    participant SR as scheme-resolution-svc
+    participant DC as dispute-case-svc
+    participant RU as dispute-rules-svc
+    participant FR as fraud-gateway-svc
+    participant CT as compliance-timer-svc
+    participant FP as financial-posting-svc
+    participant EV as evidence-svc
+    participant NR as network-router-svc
+    participant MC as mcom-adapter-svc
+    participant MCOM as MCOM
+
+    CU->>APP: "I don't recognise this charge"
+    APP->>BFF: GET /transactions/disputable?accountId
+    BFF->>TR: lookup(accountId, window=180d)
+    TR-->>BFF: canonical transactions (masked)
+    APP->>BFF: POST /claims {cardRef, txnId, reasonGroup:FRAUD, statement}
+    BFF->>CI: CreateClaim
+    CI->>CI: dedup check (open case on same txn?)
+    CI->>SR: ResolveScheme(cardRef, txn)
+    SR-->>CI: {network: MASTERCARD, basis: SETTLEMENT_NETWORK}
+    CI-->>BFF: 202 Accepted {claimId}
+    CI--)DC: ClaimAccepted
+    DC->>DC: open DisputeCase (1 per txn)
+    DC->>RU: assess(txn, reasonGroup, scheme, asOf=txnDate)
+    RU-->>DC: right=YES, reasonCode=4837, timeBar=120d,<br/>evidence=[cardholder statement], preConditions=[card blocked]
+    DC->>FR: assess(txn, customer)
+    FR-->>DC: score, linked-fraud-case
+    DC--)CT: start RegE timers (10bd PC, 45d/90d resolution)
+    DC->>FP: IssuePosting(PROVISIONAL_CREDIT, idemKey)
+    FP-->>DC: PostingCompleted
+    DC--)APP: push "Provisional credit applied"
+    DC->>EV: request bundle (statement, device data)
+    EV-->>DC: EvidenceBundled(manifestId)
+    DC->>NR: SubmitNetworkCycle(FIRST_CHARGEBACK)
+    NR->>MC: submit(canonical)
+    MC->>MC: ACL translate → Mastercom MDR payload
+    MC->>MCOM: POST chargeback + documents
+    MCOM-->>MC: acknowledgement (Mastercom caseId)
+    MC--)DC: NetworkMessageSent(correlationId)
+    DC--)APP: status "Sent to merchant's bank"

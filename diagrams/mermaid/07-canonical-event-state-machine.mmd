@@ -1,0 +1,20 @@
+stateDiagram-v2
+    [*] --> ClaimSubmitted
+    ClaimSubmitted --> ClaimAccepted: validation + dedup pass
+    ClaimSubmitted --> ClaimRejected: duplicate / not entitled
+    ClaimAccepted --> CaseOpened
+    CaseOpened --> EligibilityAssessed
+    EligibilityAssessed --> ProvisionalCreditIssued: Reg E eligible
+    EligibilityAssessed --> CaseDeniedNoRight: no chargeback right
+    ProvisionalCreditIssued --> EvidenceRequested
+    EvidenceRequested --> EvidenceBundled
+    EvidenceBundled --> NetworkSubmissionQueued
+    NetworkSubmissionQueued --> NetworkMessageSent
+    NetworkMessageSent --> NetworkResponseReceived
+    NetworkResponseReceived --> CaseDecided: accepted / represented
+    NetworkResponseReceived --> NetworkSubmissionQueued: escalate cycle
+    CaseDecided --> PostingCompleted
+    PostingCompleted --> CaseClosed
+    CaseDeniedNoRight --> CaseClosed
+    ClaimRejected --> [*]
+    CaseClosed --> [*]

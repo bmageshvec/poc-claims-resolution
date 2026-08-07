@@ -1,0 +1,62 @@
+graph TB
+    subgraph EXP["Experience Layer"]
+        CBFF["Customer BFF"]
+        OBFF["Issuer-Ops BFF"]
+        PBFF["Partner BFF / PAI Gateway"]
+    end
+
+    CI["<b>BC-1 Claim Intake</b><br/>Core"]
+    DC["<b>BC-2 Dispute Case Mgmt</b><br/>Core / Orchestrator"]
+    RU["<b>BC-3 Eligibility &amp; Rules</b><br/>Core"]
+    NX["<b>BC-4 Network Exchange</b><br/>Core"]
+    FP["<b>BC-5 Financial Posting</b><br/>Supporting"]
+    EV["<b>BC-6 Evidence</b><br/>Supporting"]
+    CT["<b>BC-7 Compliance &amp; Timers</b><br/>Supporting"]
+    WA["<b>BC-8 Work Assignment</b><br/>Supporting"]
+    PA["<b>BC-9 PAI</b><br/>Supporting / OHS"]
+    CO["<b>BC-10 Correspondence</b><br/>Supporting"]
+
+    CUST["Customer/Account/Card<br/>(Core Banking)"]
+    TXN["Transaction Retrieval<br/>(Switch/Settlement)"]
+    FRD["Fraud &amp; Risk"]
+    VAULT["Token Vault (PCI)"]
+    LDGR["Core Banking Ledger"]
+    MCOM["MCOM / Mastercom"]
+    VROL["VROL (Visa)"]
+    RPT["Reporting / Audit"]
+
+    CBFF -->|"CS"| CI
+    OBFF -->|"CS"| DC
+    PBFF -->|"CS"| PA
+
+    CI -->|"CS: ClaimAccepted"| DC
+    DC -->|"CS + ACL"| RU
+    DC -->|"CS"| NX
+    DC -->|"CS"| FP
+    DC -->|"CS"| EV
+    DC -->|"Partnership"| CT
+    DC -->|"CS"| WA
+    DC -->|"CS"| CO
+    PA -->|"Partnership"| DC
+    PA -->|"CS"| EV
+    NX -->|"CS"| EV
+
+    CI -.->|"ACL"| CUST
+    CI -.->|"ACL"| TXN
+    DC -.->|"ACL"| FRD
+    NX -.->|"ACL"| VAULT
+    FP -.->|"ACL + Customer/Supplier<br/>(we are downstream)"| LDGR
+    NX ==>|"<b>Conformist + ACL</b>"| MCOM
+    NX ==>|"<b>Conformist + ACL</b>"| VROL
+    DC -.->|"Published Language<br/>(event stream)"| RPT
+
+    classDef core fill:#0d3b66,color:#fff,stroke:#0d3b66,stroke-width:2px
+    classDef sup fill:#457b9d,color:#fff
+    classDef ext fill:#adb5bd,color:#000
+    classDef net fill:#f4a261,color:#000,stroke:#e76f51,stroke-width:2px
+    classDef exp fill:#a8dadc,color:#000
+    class CI,DC,RU,NX core
+    class FP,EV,CT,WA,PA,CO sup
+    class CUST,TXN,FRD,VAULT,LDGR,RPT ext
+    class MCOM,VROL net
+    class CBFF,OBFF,PBFF exp

@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    actor IS as Issuer Analyst
+    participant OPS as Ops Workspace
+    participant OB as issuer-ops-bff
+    participant WA as work-assignment-svc
+    participant DC as dispute-case-svc
+    participant RU as dispute-rules-svc
+    participant EV as evidence-svc
+    participant FP as financial-posting-svc
+    participant CT as compliance-timer-svc
+
+    IS->>OPS: open worklist
+    OPS->>OB: GET /worklist?skill=MC_FRAUD
+    OB->>WA: pull next (skills + SLA urgency + amount band)
+    WA-->>OB: workItem(caseId)
+    OB->>DC: GET /cases/{id}
+    OB->>EV: GET /bundles?caseId
+    OB->>RU: GET /options?caseId (valid next actions for this scheme+cycle)
+    RU-->>OB: [ACCEPT_REPRESENTMENT, PRE_ARBITRATION, WRITE_OFF]
+    OB-->>OPS: unified case view + permitted actions only
+    IS->>OPS: choose PRE_ARBITRATION + rationale
+    OPS->>OB: POST /cases/{id}/decisions
+    OB->>DC: Adjudicate(decision, actor, rationale)
+    DC->>DC: aggregate validates against stage machine + rules
+    DC--)CT: reset/advance scheme time bars
+    DC--)FP: hold PC (no reversal yet)
+    DC->>DC: stage → NETWORK_ACTION (cycle 3)

@@ -1,0 +1,108 @@
+graph TB
+    subgraph EDGE["Edge / Experience"]
+        WEB["Customer Web + Mobile<br/>[React / React Native]"]
+        OPS["Issuer Ops Workspace<br/>[React micro-frontends]"]
+        CBFF["customer-bff<br/>[Spring Boot / EKS]"]
+        OBFF["issuer-ops-bff<br/>[Spring Boot / EKS]"]
+        PBFF["partner-bff (PAI)<br/>[Spring Boot / EKS]"]
+        APIGW["API Gateway + WAF<br/>[AWS APIGW / ALB]"]
+    end
+
+    subgraph CORESVC["Core Domain Services"]
+        CIS["claim-intake-svc"]
+        DCS["dispute-case-svc<br/>+ Step Functions saga"]
+        DRS["dispute-rules-svc<br/>[DMN engine]"]
+        SRS["scheme-resolution-svc"]
+        NRS["network-router-svc"]
+    end
+
+    subgraph ADPT["Scheme Adapters (isolated, PCI-scoped)"]
+        MCA["mcom-adapter-svc"]
+        VRA["vrol-adapter-svc"]
+    end
+
+    subgraph SUPSVC["Supporting Services"]
+        EVS["evidence-svc"]
+        FPS["financial-posting-svc"]
+        CTS["compliance-timer-svc"]
+        WAS["work-assignment-svc"]
+        CRS["correspondence-svc"]
+    end
+
+    subgraph INTEG["Integration ACLs"]
+        TRS["transaction-retrieval-svc"]
+        PRS["party-reference-svc"]
+        FGS["fraud-gateway-svc"]
+        PGB["pega-bridge-svc<br/>(migration)"]
+    end
+
+    subgraph DATA["Data & Platform"]
+        MSK[("MSK<br/>Event Backbone")]
+        AUR[("Aurora PostgreSQL<br/>per-service schemas")]
+        DDB[("DynamoDB<br/>BIN ranges, outbox, timers")]
+        S3[("S3<br/>evidence + audit")]
+        OS[("OpenSearch / Redshift<br/>read models")]
+    end
+
+    WEB --> APIGW --> CBFF
+    OPS --> APIGW --> OBFF
+    APIGW --> PBFF
+
+    CBFF --> CIS
+    CBFF --> DCS
+    CBFF --> EVS
+    OBFF --> DCS
+    OBFF --> WAS
+    OBFF --> DRS
+    OBFF --> EVS
+    PBFF --> DCS
+    PBFF --> EVS
+
+    CIS --> TRS
+    CIS --> PRS
+    CIS --> SRS
+    CIS -->|ClaimAccepted| MSK
+    MSK --> DCS
+
+    DCS --> DRS
+    DCS --> FGS
+    DCS --> NRS
+    DCS --> FPS
+    DCS --> CTS
+    DCS --> EVS
+    DCS -->|events| MSK
+    MSK --> WAS
+    MSK --> CRS
+    MSK --> OS
+
+    NRS --> MCA
+    NRS --> VRA
+    MCA -->|responses| MSK
+    VRA -->|responses| MSK
+
+    CIS --- AUR
+    DCS --- AUR
+    DRS --- AUR
+    FPS --- AUR
+    WAS --- AUR
+    SRS --- DDB
+    NRS --- DDB
+    CTS --- DDB
+    EVS --- S3
+    MCA --- S3
+    VRA --- S3
+
+    PGB --- MSK
+
+    classDef exp fill:#a8dadc,color:#000
+    classDef core fill:#0d3b66,color:#fff
+    classDef adpt fill:#f4a261,color:#000
+    classDef sup fill:#457b9d,color:#fff
+    classDef integ fill:#adb5bd,color:#000
+    classDef data fill:#e9c46a,color:#000
+    class WEB,OPS,CBFF,OBFF,PBFF,APIGW exp
+    class CIS,DCS,DRS,SRS,NRS core
+    class MCA,VRA adpt
+    class EVS,FPS,CTS,WAS,CRS sup
+    class TRS,PRS,FGS,PGB integ
+    class MSK,AUR,DDB,S3,OS data

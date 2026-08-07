@@ -1,0 +1,44 @@
+graph TB
+    subgraph P["Personas"]
+        CU["<b>Customer</b><br/>[Person]<br/>Cardholder raising a dispute"]
+        IS["<b>Issuer</b><br/>[Person]<br/>Back-office dispute analyst"]
+        AC["<b>Acquirer</b><br/>[Person]<br/>No direct access"]
+        ME["<b>Merchant</b><br/>[Person]<br/>No direct access"]
+    end
+
+    CLAIMS["<b>Claims</b><br/>[Software System]<br/>Dispute Claims Resolution System"]
+
+    PAI["<b>PAI</b><br/>[Software System]<br/>Partner API Interface<br/>Open Host Service"]
+
+    VROLX["<b>VROL</b><br/>[External System]<br/>Visa Resolve Online / VCR"]
+    MCOMX["<b>MCOM</b><br/>[External System]<br/>Mastercom / MDR"]
+    AWSX["<b>AWS</b><br/>[External System]<br/>Cloud platform"]
+    CBK["<b>Core Banking</b><br/>[External System]<br/>Ledger, CIF, cards"]
+    SWCH["<b>Payment Switch</b><br/>[External System]<br/>Auth + settlement records"]
+    FRDX["<b>Fraud Platform</b><br/>[External System]"]
+    VLT["<b>Token Vault</b><br/>[External System]<br/>PCI CDE"]
+
+    CU -->|"Raises claim, uploads evidence,<br/>tracks status (HTTPS/mTLS-TLS1.3)"| CLAIMS
+    IS -->|"Investigates, adjudicates,<br/>manages queues"| CLAIMS
+    AC -->|"Responds to chargebacks,<br/>submits representment"| PAI
+    ME -->|"Submits compelling evidence,<br/>accepts/defends"| PAI
+    PAI <-->|"Canonical partner events<br/>+ webhooks"| CLAIMS
+
+    CLAIMS <-->|"Dispute, 2nd presentment,<br/>pre-arb, arbitration<br/>(REST/SFTP, Conformist+ACL)"| MCOMX
+    CLAIMS <-->|"Dispute, pre-arb, arbitration,<br/>Order Insight (REST, Conformist+ACL)"| VROLX
+    CLAIMS -->|"Postings, provisional credit,<br/>write-off (ACL)"| CBK
+    CLAIMS -->|"Transaction lookup (ACL)"| SWCH
+    CLAIMS -->|"Fraud assessment (ACL)"| FRDX
+    CLAIMS -->|"cardRef → account range<br/>(PCI-scoped, adapter only)"| VLT
+    CLAIMS -.->|"Runs on"| AWSX
+
+    classDef person fill:#0d3b66,color:#fff,stroke:#0d3b66
+    classDef sys fill:#cfe3fb,color:#000,stroke:#1d3557,stroke-width:2px
+    classDef ext fill:#6c757d,color:#fff
+    classDef net fill:#f4a261,color:#000
+    classDef pai fill:#2a9d8f,color:#fff,stroke-width:2px
+    class CU,IS,AC,ME person
+    class CLAIMS sys
+    class CBK,SWCH,FRDX,VLT,AWSX ext
+    class VROLX,MCOMX net
+    class PAI pai

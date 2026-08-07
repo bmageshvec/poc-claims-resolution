@@ -1,0 +1,20 @@
+graph TD
+    A["Dispute Claim<br/>(parent / Service Case)"] --> B["Dispute Transaction<br/>(child case, 1 per txn)"]
+    B --> C["Retrieval Request"]
+    B --> D["Chargeback"]
+    D --> E["Representment /<br/>Second Presentment"]
+    E --> F["Pre-Arbitration /<br/>Pre-Compliance"]
+    F --> G["Arbitration /<br/>Compliance"]
+    G --> H["Network Ruling"]
+    B --> I["Provisional Credit"]
+    B --> J["Write-off / Loss Booking"]
+    B --> K["Good Faith Collection"]
+    D --> L["Recovery / Recourse"]
+    A --> M["Correspondence /<br/>Customer Letter"]
+
+    classDef core fill:#0d3b66,color:#fff,stroke:#0d3b66
+    classDef net fill:#f4a261,color:#000,stroke:#e76f51
+    classDef fin fill:#a8dadc,color:#000,stroke:#457b9d
+    class A,B core
+    class C,D,E,F,G,H,L net
+    class I,J,K fin

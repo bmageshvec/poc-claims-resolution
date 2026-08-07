@@ -1,0 +1,35 @@
+graph LR
+    subgraph MCA["mcom-adapter-svc — PCI-scoped subnet"]
+        LSN["Command Listener<br/>[SQS FIFO per case]"]
+        IDEM["Idempotency Guard<br/>[DynamoDB]"]
+        TRN["<b>McomTranslator (ACL)</b><br/>canonical → Mastercom<br/>MDR reason codes,<br/>Case/Claim structures"]
+        PANR["PAN Resolver<br/>[Token Vault client]<br/>last-mile only"]
+        DOC["Document Packager<br/>[S3 → Mastercom doc API]"]
+        CLI["Mastercom API Client<br/>[OAuth/mTLS, retry, CB]"]
+        JRN["Message Journal<br/>[append-only, WORM]"]
+        INB["Inbound Poller / Webhook<br/>2nd presentment, rulings, fees"]
+        RTRN["<b>Response Translator (ACL)</b><br/>Mastercom → canonical"]
+        PUBM["Event Publisher → MSK"]
+    end
+
+    LSN --> IDEM --> TRN --> PANR --> CLI
+    TRN --> DOC --> CLI
+    CLI --> JRN
+    INB --> RTRN --> PUBM
+    JRN --> PUBM
+
+    MCOMAPI["Mastercom / MDR APIs"]
+    VAULTX["Token Vault"]
+    S3X[("S3 evidence")]
+
+    CLI <--> MCOMAPI
+    INB <--> MCOMAPI
+    PANR <--> VAULTX
+    DOC --- S3X
+
+    classDef c fill:#f4a261,color:#000
+    classDef acl fill:#e76f51,color:#fff
+    classDef ext fill:#adb5bd,color:#000
+    class LSN,IDEM,PANR,DOC,CLI,JRN,INB,PUBM c
+    class TRN,RTRN acl
+    class MCOMAPI,VAULTX,S3X ext
