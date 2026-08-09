@@ -1,0 +1,57 @@
+stateDiagram-v2
+    direction TB
+
+    state "INTAKE" as INTAKE {
+        direction TB
+        [*] --> Complaint: "Scenario 1 — customer web form<br/>(unauthenticated)"
+        [*] --> Claim: "Scenario 2 — phone banking<br/>(identity verified on the call)"
+        Complaint --> Claim: "identity resolved<br/>+ account matched"
+        Complaint --> Discarded: "cannot identify /<br/>not our customer"
+        Claim --> [*]
+    }
+
+    INTAKE --> Triage: "Claim established"
+    INTAKE --> Closed: "discarded"
+
+    Triage --> Rejected: "duplicate · not entitled ·<br/>transaction not found"
+    Triage --> CaseOpen: "accepted — one case<br/>per disputed transaction"
+
+    CaseOpen --> Eligibility: "assess rights"
+    Eligibility --> NoRight: "no chargeback right /<br/>time bar expired"
+    Eligibility --> Deflection: "right exists and a<br/>pre-dispute channel is available"
+    Eligibility --> ProvisionalCredit: "right exists,<br/>no deflection path"
+
+    Deflection --> ResolvedEarly: "merchant refunds or accepts<br/>— cheapest exit, no filing"
+    Deflection --> ProvisionalCredit: "declined or no response"
+
+    ProvisionalCredit --> Evidence: "Reg E credit applied"
+    Evidence --> NetworkExchange: "bundle assembled, redacted"
+
+    state "NETWORK EXCHANGE — the only scheme-aware stage" as NetworkExchange {
+        direction LR
+        [*] --> Submit
+        Submit --> Await: "cycle N filed via adapter"
+        Await --> Received: "response or timeout"
+        Received --> [*]
+    }
+
+    NetworkExchange --> Adjudicate: "response received"
+    Adjudicate --> NetworkExchange: "escalate — cycle N+1"
+    Adjudicate --> Resolve: "accept outcome · concede · write off"
+
+    Resolve --> CloseNotify: "postings complete"
+    NoRight --> CloseNotify: "denial letter"
+    ResolvedEarly --> CloseNotify
+    Rejected --> CloseNotify
+
+    CloseNotify --> Closed: "customer notified, archived"
+    Closed --> [*]
+
+    Closed --> CaseOpen: "re-opened within<br/>the scheme window"
+
+    classDef schemeAware fill:#F4A261,color:#000000,stroke:#C1440E,stroke-width:3px
+    classDef exitGood fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:2px
+    classDef exitBad fill:#D1495B,color:#FFFFFF,stroke:#9D2235,stroke-width:2px
+    class NetworkExchange schemeAware
+    class ResolvedEarly exitGood
+    class NoRight,Rejected,Discarded exitBad
