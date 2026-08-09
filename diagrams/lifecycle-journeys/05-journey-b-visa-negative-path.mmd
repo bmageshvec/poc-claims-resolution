@@ -1,0 +1,59 @@
+sequenceDiagram
+    autonumber
+    actor SC as Sarah Chen
+    participant DC as dispute-case-svc
+    participant RU as dispute-rules-svc
+    participant EV as evidence-svc
+    participant FP as financial-posting-svc
+    participant WA as work-assignment-svc
+    actor IS as Issuer Analyst
+    participant VR as vrol-adapter-svc
+    participant VROL as VROL (Visa)
+    actor MER as TECHGEAR-ONLINE
+
+    Note over SC,VROL: Stages up to filing are identical to Journey A
+    Note over DC,VROL: STAGE 1 filed Thu 2 Apr - PC already applied 1 Apr
+
+    Note over MER,VROL: STAGE 2 - DISPUTE RESPONSE - Mon 20 Apr 2026
+    MER->>VROL: CE3.0 compelling evidence bundle
+    Note over MER,VROL: carrier proof of delivery, signature,<br/>GPS drop coordinates, IP + device ID<br/>matching 2 prior undisputed orders
+    VROL-->>VR: dispute response received
+    VR->>VR: ACL translate to canonical
+    VR--)DC: NetworkResponseReceived(cycle=2, REPRESENTED)
+    DC->>EV: store + classify acquirer evidence
+    DC->>DC: stage to ADJUDICATE
+    DC--)WA: create work item - analyst review
+
+    Note over IS,RU: Wed 22 Apr 2026
+    IS->>DC: open case
+    IS->>RU: GET /options?caseId
+    RU-->>IS: [ACCEPT_RESPONSE, PRE_ARBITRATION, WRITE_OFF]
+    IS->>SC: contact - "carrier says delivered &<br/>signed. Any neighbour or safe place?"
+    SC-->>IS: "Signature is not mine. Nothing arrived."
+    IS->>DC: Adjudicate(PRE_ARBITRATION, rationale)
+
+    Note over DC,VROL: STAGE 3 - PRE-ARBITRATION - Fri 24 Apr 2026
+    DC->>VR: SubmitNetworkCycle(PRE_ARB)
+    VR->>VROL: pre-arb + cardholder signature affidavit
+    VROL->>MER: pre-arb notification
+    MER-->>VROL: DECLINE - "delivery evidence stands"
+    VROL-->>VR: pre-arb declined - Fri 22 May 2026
+    VR--)DC: NetworkResponseReceived(PRE_ARB_DECLINED)
+
+    Note over IS,DC: Wed 27 May 2026 - the commercial decision
+    IS->>DC: escalate - $249.99 vs $500 arbitration filing fee
+    Note over IS,DC: filed anyway: signature mismatch is<br/>strong, and precedent matters for this merchant
+
+    Note over DC,VROL: STAGE 4 - ARBITRATION - Thu 28 May 2026
+    DC->>VR: SubmitNetworkCycle(ARBITRATION)
+    VR->>VROL: arbitration case filing
+    VROL->>VROL: Visa reviews both submissions
+
+    Note over VROL,SC: Mon 22 Jun 2026 - ruling
+    VROL-->>VR: RULED FOR ACQUIRER<br/>proof of delivery to the cardholder address prevails
+    VR--)DC: NetworkRulingReceived(ACQUIRER_FAVOUR, fee $500)
+    DC->>DC: outcome=DENIED, liability=ISSUER
+    DC->>FP: IssuePosting(PC_REVERSAL, $249.99)
+    DC->>FP: IssuePosting(NETWORK_FEE, $500 to loss account)
+    DC--)SC: adverse resolution letter +<br/>Reg E right to request documents
+    Note over SC: Balance returns to -$249.99 on 24 Jun

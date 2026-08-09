@@ -1,0 +1,254 @@
+erDiagram
+    pc_data_customer {
+        varchar   pzInsKey            PK "PEGAFS-DATA-PARTY-CUSTOMER <id>"
+        varchar   pxObjClass             "PegaFS-Data-Party-Customer"
+        varchar   pyCustomerID        UK "CIF customer number"
+        varchar   pyFullName
+        varchar   pyEmailAddress
+        varchar   pyPhoneNumber
+        varchar   pySegment              "MASS / AFFLUENT / PRIVATE"
+        varchar   pyPreferredLanguage
+        timestamp pxCreateDateTime
+        blob      pzPvStream
+    }
+
+    pc_data_account {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaFS-Data-Account"
+        varchar   pyAccountID         UK
+        varchar   pyCustomerID        FK "-> pc_data_customer (unenforced)"
+        varchar   pyProductCode          "CREDIT / DEBIT / PREPAID"
+        varchar   pyAccountStatus        "OPEN / BLOCKED / CLOSED"
+        varchar   pyCurrencyCode         "ISO 4217"
+        timestamp pyOpenDate
+        blob      pzPvStream
+    }
+
+    pc_data_card {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaFS-Data-Card"
+        varchar   pyCardID            UK "internal card reference"
+        varchar   pyAccountID         FK "-> pc_data_account"
+        varchar   pyPANToken             "vault token - NEVER the PAN"
+        varchar   pyMaskedPAN            "4111 xxxx xxxx 1234"
+        varchar   pyBIN                  "6 or 8 digit account range"
+        varchar   pyCardBrand            "MASTERCARD / VISA / co-badge"
+        varchar   pyProductType          "WORLD / PLATINUM / STANDARD"
+        varchar   pyCardStatus           "ACTIVE / BLOCKED / REISSUED"
+        varchar   pyIssueCountry
+        timestamp pyExpiryDate
+        blob      pzPvStream
+    }
+
+    pc_data_binrange {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaFS-Data-BINRange"
+        varchar   pyRangeLow          UK "low account range"
+        varchar   pyRangeHigh            "high account range"
+        varchar   pyCardBrand            "drives VROL vs MCOM routing"
+        varchar   pyProductCode
+        varchar   pyIssuerCountry
+        varchar   pyCoBadgeBrand         "domestic scheme, if any"
+        varchar   pyBINFileVersion       "weekly scheme file version"
+        timestamp pyEffectiveFrom
+        timestamp pyEffectiveTo
+    }
+
+    pc_data_merchant {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaFS-Data-Merchant"
+        varchar   pyMerchantID        UK "MID"
+        varchar   pyMerchantName
+        varchar   pyMerchantDBAName      "descriptor as seen by cardholder"
+        varchar   pyAcquirerID
+        varchar   pyAcquirerBIN
+        varchar   pyMCC                  "ISO 18245"
+        varchar   pyCountryCode
+    }
+
+    pc_data_transaction {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaFS-Data-Transaction"
+        varchar   pyTransactionID     UK
+        varchar   pyAccountID         FK
+        varchar   pyCardID            FK
+        varchar   pyMerchantID        FK
+        timestamp pyTransactionDate      "clock start for most time bars"
+        timestamp pyPostingDate
+        numeric   pyTransactionAmount
+        varchar   pyCurrencyCode
+        varchar   pyMCC
+        varchar   pyARN                  "acquirer reference number"
+        varchar   pySettlementNetwork    "AUTHORITATIVE for scheme routing"
+        varchar   pyAcquirerBIN
+        varchar   pyAuthCode
+        varchar   pyPOSEntryMode         "ecom / chip / contactless"
+        varchar   pyECommerceIndicator
+        varchar   py3DSResult            "drives liability shift"
+        blob      pzPvStream
+    }
+
+    pc_work_dispute {
+        varchar   pzInsKey            PK "PEGACS-WORK-DISPUTE CLM-<n>"
+        varchar   pxObjClass             "PegaCS-Work-Dispute"
+        varchar   pyID                UK "CLM-2026-0000481922"
+        varchar   pyStatusWork           "New / Open / Pending / Resolved-*"
+        varchar   pxCurrentStage         "Capture / Validate / ... / Close"
+        varchar   pyCustomerID        FK
+        varchar   pyAccountID         FK
+        varchar   pyIntakeChannel        "WEB / MOBILE / IVR / BRANCH / API"
+        varchar   pyReasonGroup          "FRAUD / AUTH / PROCESSING / CONSUMER"
+        clob      pyCardholderStatement  "mandatory for fraud groups"
+        numeric   pyTotalDisputedAmount
+        varchar   pyCurrencyCode
+        varchar   pyDuplicateOfID        "set by dedup check"
+        numeric   pxCoveredCount         "number of child txn cases"
+        numeric   pxUrgencyWork
+        varchar   pxCreateOpName
+        timestamp pxCreateDateTime
+        timestamp pxUpdateDateTime
+        timestamp pyResolvedTimestamp
+        varchar   pxLockHandle
+        blob      pzPvStream
+    }
+
+    pc_work_dispute_txn {
+        varchar   pzInsKey            PK "PEGACS-WORK-DISPUTE-TXN DTX-<n>"
+        varchar   pxObjClass             "PegaCS-Work-Dispute-Txn"
+        varchar   pyID                UK "DTX-2026-0000481922"
+        varchar   pxCoverInsKey       FK "-> pc_work_dispute (case containment)"
+        varchar   pyTransactionID     FK "-> pc_data_transaction"
+        varchar   pyCardID            FK
+        varchar   pyStatusWork
+        varchar   pxCurrentStage         "the 9 OOTB stages"
+        varchar   pxFlowName             "Rule-Obj-Flow currently executing"
+        varchar   pyReasonCode        FK "-> pc_data_reasoncode (4837 / 13.1)"
+        varchar   pySchemeNetwork        "MASTERCARD | VISA (routes to MCOM | VROL)"
+        varchar   pySchemeBasis          "SETTLEMENT_NETWORK / ARN / BIN / MANUAL"
+        varchar   pyRuleSetVersionUsed   "ruleset effective at pyTransactionDate"
+        numeric   pyDisputedAmount
+        varchar   pyCurrencyCode
+        smallint  pyCycleCurrent         "1=CB 2=2nd pres 3=pre-arb 4=arb"
+        varchar   pyChargebackRightFlag  "Y / N / UNRESOLVED"
+        timestamp pyTimeBarDate          "scheme deadline"
+        timestamp pyRegEProvCreditDue    "Reg E 10 business days"
+        timestamp pyRegEFinalDue         "Reg E 45 / 90 days"
+        varchar   pyOutcome              "UPHELD / DENIED / WRITTEN_OFF"
+        varchar   pyLiability            "ISSUER / ACQUIRER / MERCHANT"
+        numeric   pxUrgencyWork
+        timestamp pxCreateDateTime
+        timestamp pxUpdateDateTime
+        timestamp pyResolvedTimestamp
+        varchar   pxLockHandle
+        blob      pzPvStream             "holds full cycle + network history"
+    }
+
+    pc_work_dispute_cycle {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "-Retrieval|-Chargeback|-Representment|-PreArb|-Arbitration"
+        varchar   pyID                UK
+        varchar   pxCoverInsKey       FK "-> pc_work_dispute_txn"
+        varchar   pyCycleType            "canonical cycle name"
+        smallint  pyCycleNumber
+        varchar   pyReasonCode        FK
+        numeric   pyCycleAmount          "may be partial"
+        varchar   pyCurrencyCode
+        timestamp pyFiledDate
+        timestamp pyResponseDueDate
+        varchar   pyNetworkStatus        "FILED / ACKED / RESPONDED / RULED"
+        varchar   pyStatusWork
+        blob      pzPvStream
+    }
+
+    pc_work_dispute_fin {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "-ProvisionalCredit|-WriteOff|-GoodFaith|-Recovery"
+        varchar   pyID                UK
+        varchar   pxCoverInsKey       FK "-> pc_work_dispute_txn"
+        varchar   pyPostingType          "PROV_CREDIT / PC_REVERSAL / FINAL / WRITE_OFF"
+        numeric   pyAmount
+        varchar   pyCurrencyCode
+        varchar   pyStatusWork
+        varchar   pyApprovedByOpID       "four-eyes: approver 1"
+        varchar   pySecondApproverOpID   "four-eyes: approver 2 above threshold"
+        timestamp pyApprovedDateTime
+        blob      pzPvStream
+    }
+
+    pc_work_dispute_corr {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaCS-Work-Correspondence"
+        varchar   pyID                UK
+        varchar   pxCoverInsKey       FK "-> pc_work_dispute"
+        varchar   pyCorrespondenceType   "ACK / PROV_CREDIT_NOTICE / RESOLUTION / REG_E"
+        varchar   pyTemplateName      FK "-> pr4_rule (Rule-Obj-Corr)"
+        varchar   pyChannel              "EMAIL / LETTER / PUSH / SMS"
+        timestamp pySentDateTime
+        varchar   pyStatusWork
+    }
+
+    pc_data_adjustment {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaCS-Data-Adjustment"
+        varchar   pyAdjustmentID      UK
+        varchar   pyWorkIDRef         FK "-> pc_work_dispute_fin.pyID"
+        varchar   pyAdjustmentType       "PROV_CREDIT / REVERSAL / FINAL / FEE"
+        numeric   pyAmount
+        varchar   pyCurrencyCode
+        varchar   pyDebitCreditFlag      "D / C"
+        varchar   pyGLAccount
+        varchar   pyCoreBankingRef       "posting reference returned by ledger"
+        varchar   pyReversalOfID         "self-reference for reversals"
+        varchar   pyPostingStatus        "REQUESTED / POSTED / FAILED"
+        timestamp pyPostingDate
+    }
+
+    pc_data_reasoncode {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaCS-Data-ReasonCode"
+        varchar   pyReasonCodeID      UK
+        varchar   pyNetwork              "MASTERCARD / VISA"
+        varchar   pyCode                 "MC 4837 | Visa 13.1"
+        varchar   pyDescription
+        varchar   pyReasonGroup          "FRAUD / AUTH / PROCESSING / CONSUMER"
+        varchar   pyRuleSetVersion       "MDR-2026.1 / VCR-2026.1"
+        varchar   pyEvidenceRequired     "delimited requirement list"
+        varchar   pyAllowedCycles
+        timestamp pyEffectiveFrom
+        timestamp pyEffectiveTo
+    }
+
+    pc_data_timebar {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaCS-Data-TimeBar"
+        varchar   pyTimeBarID         UK
+        varchar   pyReasonCodeID      FK "-> pc_data_reasoncode"
+        varchar   pyNetwork
+        varchar   pyCycleType
+        smallint  pyDays                 "30 / 75 / 120 ..."
+        varchar   pyClockStartEvent      "TXN_DATE / EXPECTED_DELIVERY / SETTLEMENT"
+        timestamp pyEffectiveFrom
+        timestamp pyEffectiveTo
+    }
+
+    pc_data_customer     ||--o{ pc_data_account       : "holds"
+    pc_data_account      ||--o{ pc_data_card          : "issues"
+    pc_data_binrange     ||..o{ pc_data_card          : "classifies"
+    pc_data_account      ||--o{ pc_data_transaction   : "posts"
+    pc_data_card         ||--o{ pc_data_transaction   : "authorises"
+    pc_data_merchant     ||--o{ pc_data_transaction   : "acquires"
+
+    pc_data_customer     ||..o{ pc_work_dispute       : "raises"
+    pc_data_account      ||..o{ pc_work_dispute       : "is disputed on"
+    pc_work_dispute      ||--|{ pc_work_dispute_txn   : "covers 1..n"
+    pc_data_transaction  ||..o{ pc_work_dispute_txn   : "is disputed by"
+    pc_data_card         ||..o{ pc_work_dispute_txn   : "identifies scheme for"
+
+    pc_work_dispute_txn  ||--o{ pc_work_dispute_cycle : "spawns"
+    pc_work_dispute_txn  ||--o{ pc_work_dispute_fin   : "spawns"
+    pc_work_dispute      ||--o{ pc_work_dispute_corr  : "generates"
+    pc_work_dispute_fin  ||..o{ pc_data_adjustment    : "posts"
+
+    pc_data_reasoncode   ||..o{ pc_work_dispute_txn   : "justifies"
+    pc_data_reasoncode   ||..o{ pc_work_dispute_cycle : "filed under"
+    pc_data_reasoncode   ||--o{ pc_data_timebar       : "bounded by"

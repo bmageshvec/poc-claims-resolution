@@ -1,0 +1,54 @@
+sequenceDiagram
+    autonumber
+    actor SC as Sarah Chen
+    participant APP as Mobile App
+    participant CI as claim-intake-svc
+    participant SR as scheme-resolution-svc
+    participant DC as dispute-case-svc
+    participant RU as dispute-rules-svc
+    participant CT as compliance-timer-svc
+    participant FP as financial-posting-svc
+    participant VR as vrol-adapter-svc
+    participant VROL as VROL (Visa)
+    actor MER as TECHGEAR-ONLINE
+
+    Note over SC,APP: Mon 23 Mar 2026
+    SC->>APP: "I never received my headphones"
+    APP->>CI: POST /claims {cardRef, txnId, reasonGroup:CONSUMER}
+    CI->>CI: dedup - no open dispute on this txn
+    CI->>SR: ResolveScheme(cardRef, txn)
+    SR-->>CI: {network:VISA, basis:SETTLEMENT_NETWORK}
+    CI--)DC: ClaimAccepted
+    DC->>RU: assess(13.1, asOf=3 Mar 2026)
+    RU-->>DC: right=YES, condition=13.1,<br/>workflow=COLLABORATION, timeBar=120d (1 Jul),<br/>preConditions=[merchant contacted, delivery date passed]
+    DC->>DC: pre-conditions met - Sarah emailed twice
+
+    Note over DC,CT: Reg E clocks start
+    DC--)CT: start 10bd / 45d / 90d timers
+
+    Note over SC,FP: Wed 1 Apr 2026 - day 7, ahead of the 10bd deadline
+    DC->>FP: IssuePosting(PROVISIONAL_CREDIT, $249.99)
+    FP-->>DC: PostingCompleted
+    DC--)APP: push "Temporary credit of $249.99 applied"
+
+    Note over DC,VROL: STAGE 1 - DISPUTE - Thu 2 Apr 2026
+    DC->>VR: SubmitNetworkCycle(FIRST)
+    VR->>VR: ACL translate to VROL wire format
+    VR->>VROL: file dispute 13.1 + evidence
+    VROL-->>VR: ack {vrolCaseId, responseDue: 2 May}
+    VROL->>MER: dispute notification via acquirer
+    VR--)DC: NetworkMessageSent
+    DC--)APP: status "Sent to merchant's bank"
+
+    Note over MER,VROL: STAGE 2 - DISPUTE RESPONSE
+    MER-->>MER: no proof of delivery exists<br/>tracking never scanned
+    Note over MER,VROL: 30-day window lapses - Sat 2 May 2026
+    VROL-->>VR: no response - dispute stands
+    VR--)DC: NetworkResponseReceived(NO_RESPONSE)
+
+    Note over DC,SC: Mon 4 May 2026 - day 42, inside Reg E 45d
+    DC->>DC: stage to RESOLVE, outcome=UPHELD
+    DC->>FP: IssuePosting(FINAL_CREDIT) - PC becomes permanent
+    DC--)CT: close all timers
+    DC--)APP: "Resolved in your favour. The $249.99 is yours to keep."
+    DC--)SC: resolution letter

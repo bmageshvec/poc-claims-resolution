@@ -1,0 +1,57 @@
+stateDiagram-v2
+    direction TB
+
+    [*] --> C1
+
+    state "CYCLE 1 · FIRST CHARGEBACK" as C1 {
+        direction LR
+        [*] --> BuildCB
+        BuildCB --> ValidateRight: "check message reason code<br/>+ time bar + pre-conditions"
+        ValidateRight --> Filed: "file with supporting documents"
+        Filed --> [*]
+    }
+
+    C1 --> C2: "Mastercom accepts<br/>funds moved to issuer"
+    C1 --> ClosedNoRight: "no chargeback right /<br/>time bar expired"
+
+    state "CYCLE 2 · SECOND PRESENTMENT" as C2 {
+        direction LR
+        [*] --> AcquirerDecides
+        AcquirerDecides --> Accept: "acquirer accepts liability"
+        AcquirerDecides --> Represent: "acquirer re-presents<br/>with remedy documents"
+        AcquirerDecides --> NoResponse: "45-day window lapses"
+        Accept --> [*]
+        Represent --> [*]
+        NoResponse --> [*]
+    }
+
+    C2 --> IssuerWins: "accepted or no response"
+    C2 --> C3: "issuer rejects the<br/>re-presentment"
+    C2 --> IssuerConcedes: "issuer accepts the<br/>re-presentment"
+
+    state "CYCLE 3 · PRE-ARBITRATION" as C3 {
+        direction LR
+        [*] --> PreArbFiled
+        PreArbFiled --> AcqAccepts: "acquirer accepts<br/>within 30 days"
+        PreArbFiled --> AcqDeclines: "acquirer declines<br/>or lapses"
+        AcqAccepts --> [*]
+        AcqDeclines --> [*]
+    }
+
+    C3 --> IssuerWins: "acquirer accepts pre-arb"
+    C3 --> C4: "acquirer declines --<br/>escalate to Mastercard"
+
+    state "CYCLE 4 · ARBITRATION" as C4 {
+        direction LR
+        [*] --> MCReviews
+        MCReviews --> Ruling: "Mastercard rules on liability<br/>+ assigns fees"
+        Ruling --> [*]
+    }
+
+    C4 --> IssuerWins: "ruled for issuer"
+    C4 --> IssuerLoses: "ruled for acquirer<br/>issuer pays filing + tech fees"
+
+    IssuerWins --> [*]
+    IssuerLoses --> [*]
+    IssuerConcedes --> [*]
+    ClosedNoRight --> [*]

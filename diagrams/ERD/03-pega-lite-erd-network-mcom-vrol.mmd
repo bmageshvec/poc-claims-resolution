@@ -1,0 +1,159 @@
+erDiagram
+    pc_work_dispute_cycle {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "cycle case types"
+        varchar   pyID                UK
+        varchar   pxCoverInsKey       FK "-> pc_work_dispute_txn"
+        varchar   pyCycleType
+        smallint  pyCycleNumber
+        varchar   pyNetworkStatus
+        timestamp pyFiledDate
+        timestamp pyResponseDueDate
+    }
+
+    pc_data_networkmessage {
+        varchar   pzInsKey            PK "PEGACS-DATA-NETWORKMESSAGE NM-<n>"
+        varchar   pxObjClass             "PegaCS-Data-NetworkMessage"
+        varchar   pyNetworkMessageID  UK
+        varchar   pyCycleInsKey       FK "-> pc_work_dispute_cycle"
+        varchar   pyWorkIDRef         FK "-> pc_work_dispute_txn.pyID (denormalised)"
+        varchar   pyNetwork              "MASTERCARD | VISA (routes to MCOM | VROL)"
+        varchar   pyDirection            "OUTBOUND / INBOUND"
+        varchar   pyMessageType          "CHARGEBACK / SECOND_PRES / PRE_ARB / ARB / RETRIEVAL / RULING"
+        varchar   pyCorrelationID        "scheme-assigned correlation"
+        varchar   pyIdempotencyKey    UK "guards double submission"
+        varchar   pyConnectRuleName   FK "-> pr4_rule (Rule-Connect-REST/SOAP)"
+        varchar   pyEndpointURL
+        clob      pyRequestPayload       "raw scheme wire payload"
+        clob      pyResponsePayload      "raw scheme wire response"
+        varchar   pyHTTPStatus
+        varchar   pyErrorCode
+        smallint  pyRetryCount
+        varchar   pyMessageStatus        "QUEUED / SENT / ACKED / FAILED / DLQ"
+        timestamp pySentDateTime
+        timestamp pyAckDateTime
+        blob      pzPvStream
+    }
+
+    pc_data_mcom_case {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaCS-Data-NetworkMessage-MCOM"
+        varchar   pyMcomCaseID        UK "Mastercom Case ID"
+        varchar   pyNetworkMessageID  FK "-> pc_data_networkmessage"
+        varchar   pyMcomClaimID          "Mastercom Claim ID"
+        varchar   pyMessageReasonCode    "MDR: 4837 4853 4855 4863 4808"
+        varchar   pyChargebackRefNum     "Mastercom chargeback reference"
+        varchar   pyMcomCycle            "FIRST_CB / SECOND_PRES / PRE_ARB / ARB"
+        varchar   pyMcomQueueName        "Mastercom work queue"
+        varchar   pyDocumentIndicator    "Y if doc set attached"
+        varchar   pyMcomStatus           "scheme-side status"
+        numeric   pyMcomFeeAmount        "filing / arbitration fee"
+        varchar   pyMcomFeeCurrency
+        timestamp pyMcomFilingDate
+        timestamp pyMcomDueDate          "scheme response deadline"
+        varchar   pyBulkFileName         "when submitted via SFTP bulk"
+    }
+
+    pc_data_vrol_case {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaCS-Data-NetworkMessage-VROL"
+        varchar   pyVrolCaseID        UK "VROL Case ID"
+        varchar   pyNetworkMessageID  FK "-> pc_data_networkmessage"
+        varchar   pyVisaClaimID          "VROL Claim ID"
+        varchar   pyDisputeCondition     "VCR: 10.4 11.3 12.5 13.1 13.7"
+        varchar   pyWorkflowType         "ALLOCATION / COLLABORATION - no MC analogue"
+        varchar   pyVrolCycle            "DISPUTE / DISPUTE_RESPONSE / PRE_ARB / ARB"
+        varchar   pyVrolQueueName
+        varchar   pyCE3Indicator         "Compelling Evidence 3.0 present"
+        varchar   pyOrderInsightRef      "Visa Order Insight enquiry ref"
+        varchar   pyRDRIndicator         "Rapid Dispute Resolution deflection"
+        varchar   pyVrolStatus
+        numeric   pyVrolFeeAmount
+        varchar   pyVrolFeeCurrency
+        timestamp pyVrolFilingDate
+        timestamp pyResponseDueDate
+        varchar   pyBulkFileName
+    }
+
+    pc_data_network_doc {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaCS-Data-NetworkDocument"
+        varchar   pyNetworkDocID      UK
+        varchar   pyNetworkMessageID  FK "-> pc_data_networkmessage"
+        varchar   pyAttachDataKey     FK "-> pc_data_workattach (document body)"
+        varchar   pyDocType              "CARDHOLDER_LETTER / RECEIPT / TAV / CE3_BUNDLE"
+        varchar   pySchemeDocRef         "Mastercom docId / VROL attachmentId"
+        smallint  pyPageCount
+        numeric   pyFileSizeBytes
+        varchar   pyMimeType
+        varchar   pyRedactedFlag         "PAN/PII redaction applied"
+        timestamp pyTransmittedDateTime
+        varchar   pyTransmitStatus
+    }
+
+    pc_data_network_ruling {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "PegaCS-Data-NetworkRuling"
+        varchar   pyRulingID          UK
+        varchar   pyNetworkMessageID  FK "-> pc_data_networkmessage"
+        varchar   pyNetwork
+        varchar   pyRulingOutcome        "ISSUER_FAVOUR / ACQUIRER_FAVOUR / SPLIT"
+        varchar   pyLiableParty          "ISSUER / ACQUIRER"
+        numeric   pyRulingAmount
+        numeric   pyFeeAmount            "arbitration / technical fee"
+        varchar   pyCurrencyCode
+        varchar   pyRulingReasonText
+        timestamp pyRulingDate
+    }
+
+    pc_data_binrange {
+        varchar   pzInsKey            PK
+        varchar   pyRangeLow          UK
+        varchar   pyRangeHigh
+        varchar   pyCardBrand            "the routing decision input"
+        varchar   pyCoBadgeBrand
+        varchar   pyBINFileVersion
+        timestamp pyEffectiveFrom
+        timestamp pyEffectiveTo
+    }
+
+    pr_sys_queues {
+        varchar   pzInsKey            PK
+        varchar   pyClassName            "queued item class"
+        varchar   pyQueueName            "Connect retry queue"
+        varchar   pyItemStatus           "Scheduled / Broken-Process / Done"
+        varchar   pyEntryRef          FK "-> pc_data_networkmessage.pzInsKey"
+        smallint  pyAttempts
+        clob      pyLastMessage          "last failure text"
+        timestamp pyMinimumDateTimeForProcessing
+    }
+
+    pr4_rule {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "Rule-Connect-REST / Rule-Connect-SOAP"
+        varchar   pyRuleName          UK
+        varchar   pyClassName
+        varchar   pyRuleSet
+        varchar   pyRuleSetVersion
+        blob      pzPVStream             "endpoint, mapping, auth profile"
+    }
+
+    pc_data_workattach {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "Data-WorkAttach-File"
+        varchar   pyAttachName
+        clob      pyAttachStream         "base64 document body"
+        varchar   pyAttachExtension
+        varchar   pyTopic
+        timestamp pxCreateDateTime
+    }
+
+    pc_work_dispute_cycle   ||--|{ pc_data_networkmessage  : "exchanges 1..n messages"
+    pc_data_networkmessage  ||--o| pc_data_mcom_case       : "correlates when network = MASTERCARD"
+    pc_data_networkmessage  ||--o| pc_data_vrol_case       : "correlates when network = VISA"
+    pc_data_networkmessage  ||--o{ pc_data_network_doc     : "carries evidence documents"
+    pc_data_networkmessage  ||--o| pc_data_network_ruling  : "yields ruling"
+    pc_data_network_doc     }o..|| pc_data_workattach      : "transmits stored body"
+    pc_data_networkmessage  ||..o{ pr_sys_queues           : "retried via async queue"
+    pr4_rule                ||..o{ pc_data_networkmessage  : "Rule-Connect-REST transports"
+    pc_data_binrange        ||..o{ pc_data_networkmessage  : "brand determines target scheme"

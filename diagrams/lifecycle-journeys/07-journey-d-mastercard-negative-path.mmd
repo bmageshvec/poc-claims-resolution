@@ -1,0 +1,57 @@
+sequenceDiagram
+    autonumber
+    actor SC as Sarah Chen
+    participant DC as dispute-case-svc
+    participant RU as dispute-rules-svc
+    participant CT as compliance-timer-svc
+    participant FP as financial-posting-svc
+    actor IS as Issuer Analyst
+    participant MC as mcom-adapter-svc
+    participant MCOM as MCOM (Mastercom)
+    actor MER as TECHGEAR-ONLINE
+
+    Note over DC,MCOM: CYCLE 1 filed Tue 7 Apr - PC applied 1 Apr
+
+    Note over MER,MCOM: CYCLE 2 - SECOND PRESENTMENT - Mon 4 May 2026
+    MER->>MCOM: remedy documents
+    Note over MER,MCOM: carrier proof of delivery + signature.<br/>Free-form documents - no CE3.0 structure,<br/>no device or IP correlation fields
+    MCOM-->>MC: second presentment received
+    MC->>MC: ACL translate to canonical
+    MC--)DC: NetworkResponseReceived(cycle=2, REPRESENTED)
+    DC->>DC: stage to ADJUDICATE
+
+    Note over IS,SC: Wed 6 May 2026 - Reg E 45-day deadline tomorrow
+    IS->>SC: contact - signature check
+    SC-->>IS: "Not my signature"
+    Note over DC,SC: Thu 7 May 2026 - 45 days reached, case still open
+    DC--)CT: Reg E 45d breached - notify Sarah in writing
+    DC--)SC: "Investigation continues. Your credit stays<br/>in place." (Reg E extension notice)
+
+    Note over DC,MCOM: CYCLE 3 - PRE-ARBITRATION - Fri 8 May 2026
+    IS->>DC: Adjudicate(PRE_ARBITRATION)
+    DC->>MC: SubmitNetworkCycle(PRE_ARB)
+    MC->>MCOM: pre-arb + signature affidavit
+    MCOM->>MER: pre-arb notification
+    MER-->>MCOM: DECLINE
+    MCOM-->>MC: pre-arb declined - Fri 5 Jun 2026
+    MC--)DC: NetworkResponseReceived(PRE_ARB_DECLINED)
+
+    Note over IS,DC: Wed 10 Jun 2026
+    IS->>RU: GET /options?caseId
+    RU-->>IS: [ARBITRATION, WRITE_OFF]
+    IS->>DC: Adjudicate(ARBITRATION)
+
+    Note over DC,MCOM: CYCLE 4 - ARBITRATION - Thu 11 Jun 2026
+    DC->>MC: SubmitNetworkCycle(ARBITRATION)
+    MC->>MCOM: arbitration case filing
+    MCOM->>MCOM: Mastercard reviews
+
+    Note over MCOM,SC: Wed 15 Jul 2026 - ruling
+    MCOM-->>MC: RULED FOR ACQUIRER<br/>+ filing fee $500 + technical fee $150
+    MC--)DC: NetworkRulingReceived(ACQUIRER_FAVOUR)
+    DC->>DC: outcome=DENIED, liability=ISSUER
+    DC--)SC: advance notice of PC reversal
+    Note over DC,SC: 5 business days notice before debit
+    DC->>FP: IssuePosting(PC_REVERSAL, $249.99)
+    DC->>FP: IssuePosting(NETWORK_FEE, $650)
+    Note over SC: Balance returns to -$249.99 on 22 Jul

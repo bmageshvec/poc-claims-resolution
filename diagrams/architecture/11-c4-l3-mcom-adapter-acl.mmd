@@ -1,4 +1,4 @@
-graph LR
+flowchart LR
     subgraph MCA["mcom-adapter-svc — PCI-scoped subnet"]
         LSN["Command Listener<br/>[SQS FIFO per case]"]
         IDEM["Idempotency Guard<br/>[DynamoDB]"]

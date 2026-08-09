@@ -1,0 +1,73 @@
+stateDiagram-v2
+    direction TB
+
+    [*] --> S1
+
+    state "STAGE 1 · DISPUTE" as S1 {
+        direction LR
+        [*] --> RouteByCondition
+        RouteByCondition --> Allocation: "10.x fraud<br/>11.x authorization"
+        RouteByCondition --> Collaboration: "12.x processing<br/>13.x consumer"
+        Allocation --> AllocFiled: "Visa decides liability<br/>from its own auth and fraud data"
+        Collaboration --> CollabFiled: "Issuer files with evidence"
+        AllocFiled --> [*]
+        CollabFiled --> [*]
+    }
+
+    S1 --> ClosedNoRight: "condition not met /<br/>time bar expired"
+    S1 --> AllocPath: "ALLOCATION"
+    S1 --> S2: "COLLABORATION"
+
+    state "ALLOCATION — no Dispute Response stage" as AllocPath {
+        direction LR
+        [*] --> AcqAccepts2: "acquirer accepts<br/>Visa's allocation"
+        [*] --> AcqPreArb: "<b>ACQUIRER</b> initiates<br/>Pre-Arbitration (stage 3)"
+        AcqAccepts2 --> [*]
+        AcqPreArb --> [*]
+    }
+
+    AllocPath --> IssuerWins: "acquirer accepts"
+    AllocPath --> S3: "acquirer files pre-arb"
+
+    state "STAGE 2 · DISPUTE RESPONSE  (Collaboration only)" as S2 {
+        direction LR
+        [*] --> AcquirerDecides
+        AcquirerDecides --> Accept: "accepts liability"
+        AcquirerDecides --> Represent: "supplies compelling<br/>evidence (CE3.0)"
+        AcquirerDecides --> NoResponse: "30-day window lapses"
+        Accept --> [*]
+        Represent --> [*]
+        NoResponse --> [*]
+    }
+
+    S2 --> IssuerWins: "accepted or no response"
+    S2 --> IssuerConcedes: "issuer accepts<br/>the evidence"
+    S2 --> S3: "<b>ISSUER</b> initiates<br/>Pre-Arbitration"
+
+    state "PRE-ARBITRATION — stage 3 Collab / stage 2 Alloc" as S3 {
+        direction LR
+        [*] --> Filed
+        Filed --> OtherAccepts: "accepted within 30 days*"
+        Filed --> OtherDeclines: "declined or lapsed<br/>(silence = acceptance)"
+        OtherAccepts --> [*]
+        OtherDeclines --> [*]
+    }
+
+    S3 --> SettledBilaterally: "accepted — no network fee"
+    S3 --> S4: "declined — escalate<br/>within 10 days*"
+
+    state "ARBITRATION — stage 4 Collab / stage 3 Alloc" as S4 {
+        direction LR
+        [*] --> VisaReviews
+        VisaReviews --> Ruling: "Visa issues Final Ruling<br/>+ assigns fees"
+        Ruling --> [*]
+    }
+
+    S4 --> IssuerWins: "ruled for issuer"
+    S4 --> IssuerLoses: "ruled for acquirer<br/>issuer pays filing fee"
+
+    IssuerWins --> [*]
+    IssuerLoses --> [*]
+    IssuerConcedes --> [*]
+    SettledBilaterally --> [*]
+    ClosedNoRight --> [*]

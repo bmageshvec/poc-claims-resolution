@@ -1,13 +1,16 @@
 # Dispute Claims Resolution Platform — E2E Target Architecture
 
 **From Pega OOTB Smart Dispute (monolith) → Domain-Driven Microservices on AWS**
-Scope: Card + e-commerce disputes, Mastercard (MCOM/Mastercom) first, Visa (VROL) next.
+Scope: Card + e-commerce disputes — **Mastercard** first (via the MCOM platform), **Visa** next (via VROL).
 Personas: Customer, Issuer (direct users) · Acquirer, Merchant (indirect, via PAI).
+
+> **New to this domain? Start at [§0 Terminology](#0-terminology--read-this-first)** — it is the shared vocabulary for all three documents in this workspace, and it disambiguates the terms that mean two different things depending on which scheme you are reading about.
 
 ---
 
 ## Table of Contents
 
+0. [**Terminology — read this first**](#0-terminology--read-this-first)
 1. [Executive summary & key decisions](#1-executive-summary--key-decisions)
 2. [Part A — Reverse-engineering Pega OOTB Smart Dispute](#2-part-a--reverse-engineering-pega-ootb-smart-dispute)
 3. [Part B — Domain-Driven Design: subdomains & bounded contexts](#3-part-b--domain-driven-design-subdomains--bounded-contexts)
@@ -21,6 +24,203 @@ Personas: Customer, Issuer (direct users) · Acquirer, Merchant (indirect, via P
 11. [Part J — Cross-cutting concerns & NFRs](#11-part-j--cross-cutting-concerns--nfrs)
 12. [Part K — Strangler-fig migration roadmap](#12-part-k--strangler-fig-migration-roadmap)
 13. [Appendix — Decision log (ADR summary)](#13-appendix--decision-log-adr-summary)
+
+---
+
+## 0. Terminology — read this first
+
+This section is the shared vocabulary for all three documents in this workspace. Numbering starts at **0** deliberately, so every existing cross-reference to §1–§13 stays valid.
+
+### 0.1 The three layers people conflate
+
+The single most common source of confusion in this domain. **Scheme, platform and programme are three different things.**
+
+| Layer | Visa | Mastercard | What it is |
+|---|---|---|---|
+| **Scheme** *(the card network)* | `VISA` | `MASTERCARD` | The **company and network** that owns the rails, sets the rules and ultimately rules on disputes |
+| **Platform** *(the dispute system)* | **VROL** — Visa Resolve Online | **MCOM** — Mastercom | The **software the scheme gives you** to file and exchange disputes. An API and a portal |
+| **Programme** *(the rulebook)* | **VCR** — Visa Claims Resolution | **MDR** — Mastercard Dispute Resolution | The **named set of rules** governing how disputes work — reason codes, cycles, time bars, evidence |
+
+Read as a sentence: *"Under **VCR**, an issuer files a **Visa** dispute through **VROL**."*
+
+**They are one-to-one today, which is exactly why they get conflated.** They are not the same kind of thing, and Amex breaks the mapping — scheme, acquirer and dispute platform are all the same entity, with no separately-branded platform.
+
+#### The naming rule this workspace follows
+
+| Context | Correct value | Never |
+|---|---|---|
+| Canonical fields, events, published language — `SchemeDecision.network`, `pySchemeNetwork`, `pyNetwork` | `MASTERCARD` \| `VISA` | ~~`MCOM`~~, ~~`VROL`~~ |
+| Adapter service names | `mcom-adapter-svc`, `vrol-adapter-svc` | — |
+| Scheme-specific correlation tables | `pc_data_mcom_case`, `pc_data_vrol_case` | — |
+| Ruleset versions | `MDR-2026.1`, `VCR-2026.1` | — |
+
+**Why the canonical value is the scheme, not the platform:** the field feeds two consumers. `network-router-svc` needs to know *where to send it* (platform), but `dispute-rules-svc` needs to know *which rulebook applies* (scheme). Only the scheme value works for both — reason code 4837 belongs to Mastercard's rulebook, not to Mastercom the software. The platform is derivable from the scheme via router config, so putting it in the message would duplicate a fact the router already owns. See [ADR-002](#13-appendix--decision-log-adr-summary) and §5.
+
+### 0.2 ⚠ Terms that mean different things depending on who is speaking
+
+| Term | Meaning A | Meaning B | How to disambiguate |
+|---|---|---|---|
+| **Collaboration** | **Visa:** one of the two VCR workflows — 12.x processing, 13.x consumer disputes | **Mastercard:** a **pre-dispute deflection** process that runs *before* the first chargeback | Always qualify: *Visa Collaboration workflow* vs *Mastercom Collaboration request*. In code use `VISA_COLLABORATION` and `DEFLECTION` — never a bare `COLLABORATION` |
+| **Dispute** | **Visa:** the formal name of stage 1 | Generic: any disputed transaction | Capitalised = the Visa stage |
+| **Chargeback** | **Mastercard:** the formal name of cycle 1 | Generic: the whole process | "First Chargeback" = the MDR cycle |
+| **Claim** | **Our model:** the `Claim` aggregate — a customer complaint covering 1..n transactions | **Both schemes:** a scheme-assigned identifier (`VROL Claim ID`, `Mastercom Claim ID`) | Ours is `pc_work_dispute`; theirs live on the correlation tables |
+| **Case** | **Our model:** `DisputeCase` — one dispute against one transaction | **Both schemes:** `Mastercom Case ID`, `VROL Case ID` | Same rule as Claim |
+| **Cycle** vs **Stage** | **Cycle:** a network exchange round (`FIRST`, `SECOND`, `PRE_ARB`, `ARBITRATION`) | **Stage:** our internal case stage (`Capture` … `Close`) | Cycles are the scheme's; stages are ours. See lifecycles doc §2 |
+| **Representment** | **Mastercard:** older/acquirer-side term for Second Presentment | — | Prefer "Second Presentment" |
+| **Network** | The scheme | Sometimes loosely used for the platform | In this workspace it always means the **scheme** |
+
+### 0.3 The parties
+
+| Term | Who | Access to this platform |
+|---|---|---|
+| **Cardholder / Customer** | The person who raised the dispute | Direct, authenticated digital banking |
+| **Issuer** | The bank that issued the card — **us**, in this architecture | Direct, corporate SSO |
+| **Acquirer** | The merchant's bank | **Indirect only, via PAI** |
+| **Merchant** | The business that took the payment | **Indirect only, via PAI** |
+| **Scheme / Network** | Visa or Mastercard | Not a user — the counterparty and the arbiter |
+
+### 0.4 Dispute lifecycle vocabulary
+
+| Term | Meaning |
+|---|---|
+| **Presentment / First Presentment** | The original transaction being cleared and settled, acquirer → network → issuer. Happens before any dispute exists |
+| **Pre-dispute** | Optional deflection before a formal filing — Visa RDR / Order Insight, Mastercom Collaboration / Ethoca. The cheapest possible outcome |
+| **Dispute (Visa) / First Chargeback (Mastercard)** | The issuer's formal filing. Moves funds acquirer → issuer |
+| **Dispute Response (Visa) / Second Presentment (Mastercard)** | The acquirer's defence |
+| **Pre-Arbitration** | Last bilateral chance to settle before the scheme is asked to rule. **Filed by the acquirer in Visa Allocation, by the issuer otherwise** |
+| **Arbitration** | The scheme reviews and issues a **binding** ruling. Loser pays the fees |
+| **Compliance / Pre-Compliance** | An **independent** flow for rule violations causing financial loss where no chargeback right exists. Filed by either party, at any point |
+| **Time bar** | The scheme deadline for an action. Missing it is an unrecoverable loss |
+| **Chargeback right** | Whether a valid dispute exists at all, under a given reason code, at the transaction date |
+| **Liability shift** | Rules moving fraud liability between parties — e.g. EMV, 3DS |
+| **Deflection** | Resolving before a formal dispute is filed |
+
+### 0.5 Visa-specific
+
+| Term | Meaning |
+|---|---|
+| **VCR** | Visa Claims Resolution — the programme |
+| **VROL** | Visa Resolve Online — the platform |
+| **Allocation** | The VCR workflow for **10.x Fraud** and **11.x Authorization**. Visa decides liability itself from VisaNet data. **3 stages** — no Dispute Response |
+| **Collaboration** | The VCR workflow for **12.x Processing Errors** and **13.x Consumer Disputes**. Parties exchange evidence. **4 stages** |
+| **Dispute condition** | Visa's reason vocabulary — `10.4`, `12.5`, `13.1`. Equivalent to a Mastercard message reason code |
+| **CE3.0** | Compelling Evidence 3.0 — Visa's **structured** evidence standard: device ID, IP, prior undisputed transaction history |
+| **RDR** | Rapid Dispute Resolution — automated pre-dispute refund by merchant rule |
+| **Order Insight / Visa Merchant Purchase Inquiry** | Merchant supplies transaction detail to the issuer pre-dispute |
+| **Associated Transactions** | VROL surfaces credits, reversals or adjustments that would invalidate the dispute. The issuer **must verify** before filing |
+| **Dispute Questionnaire** | Mandatory structured intake form in Collaboration |
+| **Response Certification** | Failure to respond in time = **acceptance of liability and closure**. Silence loses |
+| **VCR index** | Visa's health score for issuers, acquirers, merchants and cardholders. Degraded by invalid filings |
+| **VisaNet / BASE II / VIP** | Visa's processing rails — VIP is online auth, BASE II is file-based clearing |
+
+### 0.6 Mastercard-specific
+
+| Term | Meaning |
+|---|---|
+| **MDR** | Mastercard Dispute Resolution — the programme |
+| **MCOM / Mastercom** | The platform |
+| **Message reason code** | Mastercard's reason vocabulary — `4837`, `4853`, `4855`, `4863`. Equivalent to a Visa dispute condition |
+| **Collaboration request** | **Pre-dispute** alert to the acquirer before a chargeback is processed. **Not** Visa's Collaboration workflow — see §0.2 |
+| **Ethoca** | Mastercard-owned alert network used to initiate Collaboration |
+| **Consumer Clarity** | Merchant transaction detail supplied to cardholders pre-dispute |
+| **DMS / SMS** | Dual Message System (auth and clearing separate) / Single Message System (combined) |
+| **Arbitration Case Filing** | Mastercard's name for escalating to arbitration |
+| **Fee collection** | A separate Mastercom message type for dispute-related fees |
+
+### 0.7 Money movement
+
+| Term | Meaning |
+|---|---|
+| **Provisional credit** | Issuer credits the **cardholder** under Reg E or internal policy. **Not** the network refunding anyone |
+| **Dispute financial** | The scheme moving funds between **acquirer and issuer**. Independent of provisional credit |
+| **PC reversal** | Withdrawing provisional credit after an adverse outcome. Requires advance written notice |
+| **Final credit** | Provisional credit made permanent |
+| **Write-off** | Issuer absorbs the loss rather than pursue it |
+| **Recovery / Good Faith Collection** | Attempting to recover outside the formal dispute rails |
+| **Network fee** | Filing, arbitration and technical fees. Paid by the losing party |
+
+### 0.8 Regulatory
+
+| Term | Meaning |
+|---|---|
+| **Reg E** | US Electronic Fund Transfer Act rules. **10 business days** to provisional credit, **45 days** to resolve, **90 days** extended for card-not-present |
+| **Reg Z** | US credit-card billing-error rules |
+| **Breach** | A missed regulatory deadline. Recorded permanently even if later remediated |
+
+### 0.9 Card and transaction
+
+| Term | Meaning |
+|---|---|
+| **PAN** | Primary Account Number — the full card number. **Never** stored in this platform |
+| **BIN / account range** | First 6–8 digits identifying the issuer and brand. Scheme files update weekly |
+| **cardRef / token** | Opaque reference used everywhere a PAN would otherwise appear |
+| **ARN** | Acquirer Reference Number — traces a transaction through clearing |
+| **Settlement network** | The network the transaction **actually settled on**. Authoritative for scheme routing, above the card's headline brand |
+| **Co-badged** | A card carrying two brands — e.g. Mastercard + a domestic scheme |
+| **MCC** | Merchant Category Code |
+| **3DS** | 3-D Secure cardholder authentication. Drives liability shift |
+
+### 0.10 Architecture and DDD
+
+| Term | Meaning |
+|---|---|
+| **BC-n** | **Bounded Context** number — an independently-owned slice of the domain with its own model. Full list in §3.2. BC-2 = Dispute Case Management, BC-4 = Network Exchange |
+| **Aggregate** | A consistency boundary enforcing its own invariants transactionally — `Claim`, `DisputeCase`, `NetworkExchange` |
+| **ACL** | Anti-Corruption Layer — translation at a boundary so a foreign model cannot leak inward |
+| **Published Language** | A stable, versioned contract shared across contexts — here, the canonical event schema |
+| **Conformist** | Accepting an upstream model unchanged because you have no leverage — our position with both schemes |
+| **Customer/Supplier** | Upstream and downstream teams who can negotiate the contract |
+| **OHS** | Open Host Service — one published contract serving many consumers. PAI is one |
+| **PAI** | Partner API Interface — the only **inbound** door into our platform for acquirers and merchants. Not their only route into the *dispute*: that is normally the scheme portal |
+| **BFF** | Backend For Frontend — a per-persona API aggregation layer |
+| **Saga** | A long-running process with compensating actions. The dispute lifecycle is orchestrated as one |
+| **Transactional outbox** | Writing an event in the same transaction as the state change, relayed afterwards — guarantees no lost events |
+| **Idempotency key** | A value making a repeated command safe to reprocess |
+
+### 0.11 Diagram conventions — the shared legend
+
+Every diagram across all three documents uses this palette and these line styles. Individual diagrams do not repeat the legend; this is it. Authoring rules are in [`prompts/mermaid-diagram-rules.md`](../prompts/mermaid-diagram-rules.md).
+
+**Node colour**
+
+| Colour | Meaning |
+|---|---|
+| Dark blue `#0D3B66` | **Person / actor** — a human using a UI |
+| Bright blue `#1061B0`, heavy border | **The system in scope.** Only one element per diagram gets the heavy border |
+| Teal `#2A9D8F` | **Ours, supporting** — our published API, or an owned supporting service |
+| Visa blue `#1A1F71` + gold border | **Visa · VROL** |
+| Mastercard red `#CF0A2C` + orange border | **Mastercard · MCOM** |
+| Grey `#8C8C8C` | **External system** — we integrate, we don't own |
+| Red `#D1495B` | **Risk, breach or blocked path** |
+| Amber `#E9C46A` | **Datastore** |
+
+**Line style** — meaning is carried by style as well as colour, so the diagrams survive greyscale printing.
+
+| Style | Meaning |
+|---|---|
+| `-->` solid | Primary path · a person using a UI · a synchronous call |
+| `==>` thick | **System-to-system API — no UI, no human involved** |
+| `-.->` dotted | Secondary, asynchronous, optional, or an unenforced reference |
+| `--x` | Blocked, rejected, or terminated |
+| `~~~` invisible | Layout hint only — draws nothing |
+
+**In ER diagrams** the crow's-foot legend is separate and lives in [`pega-lite-db-schema.md` §4](./pega-lite-db-schema.md#4-mermaid-erd-notation--legend--conventions), because `erDiagram` supports no styling at all — grouping there is carried entirely by table-name prefix.
+
+**Presentation masters.** Where a diagram must look exactly one way — the C4 L1 context in §7.1 — the authoritative artifact is draw.io or SVG, and the Mermaid version is an inline approximation. Mermaid cannot hold fixed bands, lane positions or connection points.
+
+### 0.12 Pega (as-is system)
+
+Table and column prefixes — `pc_`, `pr_`, `pr4_`, `px`, `py`, `pz` — are covered in [`pega-lite-db-schema.md` §0](./pega-lite-db-schema.md#0-naming-conventions--read-this-first).
+
+| Term | Meaning |
+|---|---|
+| **Smart Dispute** | Pega's OOTB dispute application — the system being replaced |
+| **Case type** | A Pega work-object class with a lifecycle |
+| **Work object** | An instance of a case type |
+| **Workbasket / Worklist** | Pega's queue and personal-inbox constructs |
+| **Ruleset / ruleset version** | Pega's unit of rule packaging and deployment |
+| **Declare Index** | Embedded page-list rows flattened into real rows so SQL can query them |
+| **Blob (`pzPvStream`)** | The serialised property store holding everything not exposed as a column |
 
 ---
 
@@ -38,7 +238,7 @@ The target architecture splits those five along **domain seams, not technical la
 | D2 | Case orchestration style | **Orchestrated saga** (AWS Step Functions) for the dispute lifecycle; choreographed events for side effects | The dispute lifecycle is a long-running, regulator-auditable, compensating process. Choreography alone makes the state unauditable. |
 | D3 | Network adapters | One **microservice per scheme** (`mcom-adapter`, `vrol-adapter`) behind a **Published Language** (canonical `DisputeCaseEvent`) | Scheme release cycles are independent (MC twice a year, Visa twice a year, misaligned). |
 | D4 | Relationship to the networks | **Conformist + ACL.** We conform to their wire model, but never let it leak inside. | We have zero negotiating power over Mastercom/VROL schemas. |
-| D5 | Merchant & Acquirer access | **No direct access.** Everything through **PAI** (Partner API Interface) — an Open Host Service with mTLS + OAuth2 client-credentials. | Matches the C4 context you supplied; also the correct trust boundary. |
+| D5 | Merchant & Acquirer access | **Primary path is the scheme's own portal** (VROL / Mastercom), which relays to us machine-to-machine. **PAI** is a *secondary* deflection & evidence channel — an Open Host Service with mTLS + OAuth2. No partner ever gets a UI in our platform. | The scheme rails are how disputes actually reach acquirers; PAI adds pre-emptive resolution on top. See [§7.1](#71-level-1--system-context). |
 | D6 | Front end | Decompose the Pega monolith UI into **3 experience apps + 3 BFFs** (Customer BFF, Issuer-Ops BFF, Partner BFF) | Personas have irreconcilable UX and auth models. |
 | D7 | Data | **Database per service**, Aurora PostgreSQL for transactional contexts, DynamoDB for high-volume append-only (BIN cache, idempotency, network journals), S3 for evidence | Removes the Pega single-schema coupling. |
 | D8 | Rules | Externalize Pega decision tables into a **Dispute Rules Service** (DMN / Drools or Camunda DMN) with versioned, effective-dated rulesets | Network rule changes become data deployments, not code deployments. |
@@ -68,7 +268,7 @@ PegaSmartDispute (implementation layer)   ← customer customisations
 ### 2.2 Case type hierarchy (the heart of the monolith)
 
 ```mermaid
-graph TD
+flowchart TD
     A["Dispute Claim<br/>(parent / Service Case)"] --> B["Dispute Transaction<br/>(child case, 1 per txn)"]
     B --> C["Retrieval Request"]
     B --> D["Chargeback"]
@@ -124,7 +324,7 @@ graph TD
 ### 2.5 Coupling hot-spots in the Pega monolith (the "why" of the rebuild)
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph PEGA["Pega Smart Dispute — single deployable, single schema"]
         UI["Agent Desktop +<br/>Customer Portal<br/>(Sections, Harnesses)"]
         FLOW["Case Flows<br/>(Dispute lifecycle)"]
@@ -164,7 +364,7 @@ graph LR
 ### 3.1 Subdomain classification
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph CORE["CORE DOMAIN — competitive differentiation, build & own"]
         C1["Dispute Case Management<br/>& Lifecycle"]
         C2["Eligibility, Rights<br/>& Dispute Rules"]
@@ -285,7 +485,7 @@ Replaces Pega workbaskets/worklists. Aggregate: `WorkItem`. Language: *Queue, Sk
 
 | Aspect | Detail |
 |---|---|
-| **Purpose** | The **only** door through which Acquirers and Merchants touch the platform |
+| **Purpose** | The only door through which Acquirers and Merchants touch **our platform** — a *deflection and evidence* channel that runs alongside, not instead of, the scheme rails |
 | **Aggregate root** | `PartnerEngagement` |
 | **Entities / VOs** | `PartnerIdentity`, `MerchantProfile`, `AcquirerProfile`, `InboundRepresentment`, `PartnerEvidenceSubmission`, `WebhookSubscription` |
 | **Ubiquitous language** | *Partner, Engagement, Deflection, Pre-dispute (RDR/CDRN-style), Merchant Response, Acquirer Response, Webhook* |
@@ -314,7 +514,7 @@ Aggregate: `CommunicationRequest`. Language: *Acknowledgement Letter, Provisiona
 ### 4.1 The context map
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph EXP["Experience Layer"]
         CBFF["Customer BFF"]
         OBFF["Issuer-Ops BFF"]
@@ -415,7 +615,9 @@ graph TB
 
 ### 5.1 The question, stated precisely
 
-> When a dispute is raised on a card, who decides whether the case goes to **VROL (Visa)** or **MCOM (Mastercom / Mastercard)** — the front end, or the backend?
+> When a dispute is raised on a card, who decides whether the case is filed under **VISA** (via the VROL platform) or **MASTERCARD** (via the MCOM platform) — the front end, or the backend?
+
+*(Scheme vs platform: see [§0.1](#01-the-three-layers-people-conflate). The decision resolves a **scheme**; routing to a platform is the adapter's job, one layer down.)*
 
 ### 5.2 Answer: **the backend. Unambiguously. The front end must never know.**
 
@@ -462,7 +664,7 @@ sequenceDiagram
     SR->>BIN: Lookup(accountRange, effectiveDate=txnDate)
     BIN-->>SR: {brand:MASTERCARD, product:WORLD, region:US, coBadge:[]}
     SR->>SR: Reconcile card brand vs settlementNetwork<br/>settlementNetwork WINS on conflict
-    SR-->>CI: SchemeDecision{network:MCOM, ruleSetVersion:MDR-2026.1,<br/>basis:SETTLEMENT_NETWORK, decisionId}
+    SR-->>CI: SchemeDecision{network:MASTERCARD, ruleSetVersion:MDR-2026.1,<br/>basis:SETTLEMENT_NETWORK, decisionId}
     CI->>DC: ClaimAccepted(+SchemeDecision)
     DC->>NR: SubmitNetworkCycle(caseId, cycle=FIRST_CHARGEBACK)
     NR->>NR: strategy lookup by SchemeDecision.network
@@ -565,7 +767,7 @@ Legend — **Sync** = REST/gRPC · **Async** = MSK topic / SQS / EventBridge · 
 |---|---|---|---|---|---|---|---|
 | 1 | `customer-bff` | Experience | Aggregates and shapes the customer digital-banking dispute journey | ElastiCache (session) | GraphQL / BFF REST | — | — |
 | 2 | `issuer-ops-bff` | Experience | Aggregates the issuer back-office agent workspace | ElastiCache | BFF REST | — | — |
-| 3 | `partner-bff` (PAI Gateway) | BC-9 | The only externally reachable API for acquirers & merchants | DynamoDB (rate/idempotency) | Public OpenAPI 3.1 | `PartnerEngagementRecorded` | `CaseStatusChanged` |
+| 3 | `partner-bff` (PAI Gateway) | BC-9 | The only externally reachable API into our platform for acquirers & merchants — deflection & evidence, alongside the scheme rails | DynamoDB (rate/idempotency) | Public OpenAPI 3.1 | `PartnerEngagementRecorded` | `CaseStatusChanged` |
 | 4 | `claim-intake-svc` | BC-1 | Creates, validates, deduplicates claims; orchestrates intake enrichment | Aurora PG | `POST /claims`, `GET /claims/{id}` | `ClaimSubmitted`, `ClaimAccepted`, `ClaimRejected` | `TransactionEnriched` |
 | 5 | `transaction-retrieval-svc` | BC-13 (generic) | ACL over switch/settlement; returns canonical `DisputedTransaction` | Aurora PG + Redis cache | `POST /transactions:lookup` | `TransactionEnriched` | — |
 | 6 | `scheme-resolution-svc` | BC-4 | **Owns the BIN→network decision** (D1) | DynamoDB (account ranges, effective-dated) | `POST /scheme:resolve` | `SchemeResolved` | BIN file drops (S3 event) |
@@ -601,6 +803,7 @@ Legend — **Sync** = REST/gRPC · **Async** = MSK topic / SQS / EventBridge · 
 
 ```mermaid
 stateDiagram-v2
+    direction TB
     [*] --> ClaimSubmitted
     ClaimSubmitted --> ClaimAccepted: validation + dedup pass
     ClaimSubmitted --> ClaimRejected: duplicate / not entitled
@@ -646,61 +849,97 @@ Every event carries a standard envelope:
 
 ## 7. Part F — C4 model (L1 / L2 / L3)
 
-### 7.1 Level 1 — System Context (elaborating your supplied diagram)
+### 7.1 Level 1 — System Context
+
+> **Presentation master:** [`source/C4_L1_SystemContext_DisputePlatform.drawio`](../source/C4_L1_SystemContext_DisputePlatform.drawio) · rendered at [`diagrams/C4_L1_SystemContext_DisputePlatform.svg`](../diagrams/C4_L1_SystemContext_DisputePlatform.svg).
+>
+> The Mermaid below is the **inline approximation**. Mermaid auto-layouts and cannot hold fixed bands or connection points, so the draw.io version is authoritative for presentation. See [`prompts/mermaid-diagram-rules.md`](../prompts/mermaid-diagram-rules.md) Appendix C.
 
 ```mermaid
-graph TB
-    subgraph P["Personas"]
+flowchart TB
+
+    subgraph PERSONAS["PERSONAS"]
+        direction LR
         CU["<b>Customer</b><br/>[Person]<br/>Cardholder raising a dispute"]
-        IS["<b>Issuer</b><br/>[Person]<br/>Back-office dispute analyst"]
-        AC["<b>Acquirer</b><br/>[Person]<br/>No direct access"]
-        ME["<b>Merchant</b><br/>[Person]<br/>No direct access"]
+        BO["<b>Issuer BackOffice Team</b><br/>[Person]<br/>Contact centre · disputes analyst"]
+        AC["<b>Acquirer</b><br/>[Person]<br/>Merchant's bank"]
+        ME["<b>Merchant</b><br/>[Person]<br/>Business that took the payment"]
     end
 
-    CLAIMS["<b>Claims</b><br/>[Software System]<br/>Dispute Claims Resolution System"]
+    subgraph SOFTWARE["SOFTWARE SYSTEMS"]
+        direction LR
+        PLAT["<b>Dispute Platform</b><br/>[Software System — IN SCOPE]<br/>Managed by Issuer · intake, case lifecycle,<br/>rules, evidence, postings, scheme adapters"]
+        PAI["<b>PAI</b><br/>[Software System]<br/>Partner API Interface<br/>deflection &amp; evidence channel"]
+        VROL["<b>VROL</b><br/>[External Software System]<br/>Visa Resolve Online<br/>runs the VCR programme"]
+        MCOM["<b>MCOM</b><br/>[External Software System]<br/>Mastercom<br/>runs the MDR programme"]
+    end
 
-    PAI["<b>PAI</b><br/>[Software System]<br/>Partner API Interface<br/>Open Host Service"]
+    subgraph OTHER["OTHER SYSTEMS"]
+        direction LR
+        subgraph ISSOWN["Issuer-controlled / provided"]
+            direction LR
+            CBK["<b>Core Banking</b><br/>[External Software System]<br/>Ledger · CIF · cards"]
+            FRD["<b>Fraud Platform</b><br/>[External Software System]<br/>Scoring &amp; fraud cases"]
+            TV["<b>Token Vault</b><br/>[External Software System]<br/>PCI CDE"]
+        end
+        subgraph THIRD["Third-party controlled / provided"]
+            direction LR
+            SW["<b>Payment Switch</b><br/>[External Software System]<br/>Auth &amp; settlement records"]
+            CLD["<b>Cloud Provider</b><br/>[External Software System]<br/>AWS — hosting &amp; managed services"]
+        end
+    end
 
-    VROLX["<b>VROL</b><br/>[External System]<br/>Visa Resolve Online / VCR"]
-    MCOMX["<b>MCOM</b><br/>[External System]<br/>Mastercom / MDR"]
-    AWSX["<b>AWS</b><br/>[External System]<br/>Cloud platform"]
-    CBK["<b>Core Banking</b><br/>[External System]<br/>Ledger, CIF, cards"]
-    SWCH["<b>Payment Switch</b><br/>[External System]<br/>Auth + settlement records"]
-    FRDX["<b>Fraud Platform</b><br/>[External System]"]
-    VLT["<b>Token Vault</b><br/>[External System]<br/>PCI CDE"]
+    CU -->|"Scenario 1 — raises dispute via web form"| PLAT
+    CU -->|"Scenario 2 — calls phone banking"| BO
+    BO -->|"Manages claims &amp; adjudicates [UI · SSO]"| PLAT
 
-    CU -->|"Raises claim, uploads evidence,<br/>tracks status (HTTPS/mTLS-TLS1.3)"| CLAIMS
-    IS -->|"Investigates, adjudicates,<br/>manages queues"| CLAIMS
-    AC -->|"Responds to chargebacks,<br/>submits representment"| PAI
-    ME -->|"Submits compelling evidence,<br/>accepts/defends"| PAI
-    PAI <-->|"Canonical partner events<br/>+ webhooks"| CLAIMS
+    AC -->|"Works the case in the VROL portal [UI]"| VROL
+    AC -->|"Works the case in the Mastercom portal [UI]"| MCOM
+    ME -->|"Most merchants respond via their acquirer"| AC
+    AC -.->|"Deflection &amp; evidence [mTLS]"| PAI
+    ME -.->|"Deflection &amp; evidence [mTLS]"| PAI
 
-    CLAIMS <-->|"Dispute, 2nd presentment,<br/>pre-arb, arbitration<br/>(REST/SFTP, Conformist+ACL)"| MCOMX
-    CLAIMS <-->|"Dispute, pre-arb, arbitration,<br/>Order Insight (REST, Conformist+ACL)"| VROLX
-    CLAIMS -->|"Postings, provisional credit,<br/>write-off (ACL)"| CBK
-    CLAIMS -->|"Transaction lookup (ACL)"| SWCH
-    CLAIMS -->|"Fraud assessment (ACL)"| FRDX
-    CLAIMS -->|"cardRef → account range<br/>(PCI-scoped, adapter only)"| VLT
-    CLAIMS -.->|"Runs on"| AWSX
+    PLAT -->|"Partner case views + webhooks"| PAI
+    PLAT ==>|"Dispute · pre-arb · arbitration<br/>[REST — API only, NO UI]"| VROL
+    PLAT ==>|"Chargeback · 2nd presentment · pre-arb<br/>[REST / SFTP — API only, NO UI]"| MCOM
 
-    classDef person fill:#0d3b66,color:#fff,stroke:#0d3b66
-    classDef sys fill:#cfe3fb,color:#000,stroke:#1d3557,stroke-width:2px
-    classDef ext fill:#6c757d,color:#fff
-    classDef net fill:#f4a261,color:#000
-    classDef pai fill:#2a9d8f,color:#fff,stroke-width:2px
-    class CU,IS,AC,ME person
-    class CLAIMS sys
-    class CBK,SWCH,FRDX,VLT,AWSX ext
-    class VROLX,MCOMX net
-    class PAI pai
+    PLAT ==>|"Postings"| CBK
+    PLAT ==>|"Fraud assessment"| FRD
+    PLAT ==>|"cardRef → account range"| TV
+    PLAT ==>|"Transaction lookup"| SW
+    PLAT -.->|"Runs on"| CLD
+
+    classDef person  fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef inScope fill:#1061B0,color:#FFFFFF,stroke:#0A3D6B,stroke-width:4px
+    classDef ours    fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:2px
+    classDef visa    fill:#1A1F71,color:#FFFFFF,stroke:#F7B600,stroke-width:3px
+    classDef mcard   fill:#CF0A2C,color:#FFFFFF,stroke:#F79E1B,stroke-width:3px
+    classDef ext     fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
+    class CU,BO,AC,ME person
+    class PLAT inScope
+    class PAI ours
+    class VROL visa
+    class MCOM mcard
+    class CBK,FRD,TV,SW,CLD ext
+
+    linkStyle default stroke:#54606C,stroke-width:1.5px
 ```
 
-**Note on your supplied C4:** Acquirer and Merchant are drawn as personas touching the system. In the target state they touch **PAI**, which is drawn here as a distinct system (deployed as `partner-bff` + `notification-fanout-svc`). Making PAI explicit at L1 is deliberate — it is the security and contract boundary, and it is the thing that lets merchant/acquirer onboarding scale without touching the core.
+*Colour and line-style key: [§0.11 Diagram conventions](#011-diagram-conventions--the-shared-legend).*
+
+#### 7.1.1 The four things this diagram asserts
+
+1. **Acquirer and Merchant do not work disputes in our platform.** They work them in **VROL's and Mastercom's own portals**. The scheme relays the result to us machine-to-machine. This is the single most important boundary on the page.
+2. **PAI is a secondary channel, not the door.** It exists for **deflection and evidence** — letting a merchant accept or defend before a network cycle is consumed. A partner who never touches PAI still participates fully in every dispute via the scheme.
+3. **VROL and MCOM have no UI relationship with us.** They have excellent UIs; our platform never renders or embeds them. Analysts may hold separate scheme logins for exception handling — that is a *different system*, not a feature of ours.
+4. **Two intake scenarios, one platform.** Scenario 1 is customer self-service; Scenario 2 is assisted, through the contact centre. They converge after intake.
+
+> **Correction from an earlier draft.** This diagram previously showed Acquirer and Merchant reaching the platform *only* through PAI, and labelled them "No direct access". That overstated PAI: it modelled a proposed deflection channel as the primary partner path, when in reality the scheme rails are. Decision **D5** and §8.1 are restated accordingly.
 
 ### 7.2 Level 2 — Containers inside "Claims"
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph EDGE["Edge / Experience"]
         WEB["Customer Web + Mobile<br/>[React / React Native]"]
         OPS["Issuer Ops Workspace<br/>[React micro-frontends]"]
@@ -813,7 +1052,7 @@ graph TB
 ### 7.3 Level 3 — Components inside `dispute-case-svc` (the core aggregate)
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph DCS["dispute-case-svc"]
         API["Case REST API<br/>[Spring MVC]<br/>commands + queries"]
         CONS["Event Consumers<br/>[Kafka listeners]"]
@@ -874,7 +1113,7 @@ graph TB
 ### 7.4 Level 3 — Components inside `mcom-adapter-svc` (the ACL in detail)
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph MCA["mcom-adapter-svc — PCI-scoped subnet"]
         LSN["Command Listener<br/>[SQS FIFO per case]"]
         IDEM["Idempotency Guard<br/>[DynamoDB]"]
@@ -921,12 +1160,21 @@ graph LR
 
 | Persona | Access | Identity | Entry point | Trust level | Data visibility |
 |---|---|---|---|---|---|
-| **Customer** (cardholder) | Direct, authenticated digital banking | Cognito / bank IdP, step-up MFA for claim submission | `customer-bff` | Authenticated, low privilege | Own claims only; masked card; no network internals |
-| **Issuer** (analyst / supervisor / QA) | Direct, corporate SSO | Corporate IdP (SAML/OIDC) + RBAC + ABAC on queue & amount | `issuer-ops-bff` | Trusted internal | Full case, subject to SoD (no self-approval of postings) |
-| **Acquirer** | **Indirect — PAI only** | OAuth2 client-credentials + mTLS, per-institution client | `partner-bff` | Semi-trusted external | Only cases where their acquirer ID is a party; merchant-level scoping |
-| **Merchant** | **Indirect — PAI only** (directly, or brokered by their acquirer) | OAuth2 client-credentials + mTLS, or delegated via acquirer token exchange | `partner-bff` | Least-trusted external | Only cases against their own merchant ID(s); no cardholder PII beyond what the scheme mandates |
+| **Customer** (cardholder) | Direct, authenticated digital banking, **or** unauthenticated web form (Scenario 1) | Cognito / bank IdP, step-up MFA for claim submission | `customer-bff` | Authenticated, low privilege | Own claims only; masked card; no network internals |
+| **Issuer BackOffice Team** (analyst / supervisor / QA) | Direct, corporate SSO | Corporate IdP (SAML/OIDC) + RBAC + ABAC on queue & amount | `issuer-ops-bff` | Trusted internal | Full case, subject to SoD (no self-approval of postings) |
+| **Acquirer** | **Primary: the scheme's own portal** (VROL / Mastercom) — *not our system*. **Secondary: PAI**, optional | Scheme credentials for the portal; OAuth2 client-credentials + mTLS for PAI | Scheme portal · `partner-bff` | Semi-trusted external | Via scheme: whatever the scheme shows. Via PAI: only cases where their acquirer ID is a party |
+| **Merchant** | **Primary: via their acquirer**, or a scheme portal if they hold direct access. **Secondary: PAI**, optional | Delegated by acquirer, or scheme credentials; OAuth2 + mTLS for PAI | Acquirer · scheme portal · `partner-bff` | Least-trusted external | Only cases against their own merchant ID(s); no cardholder PII beyond scheme minimum |
+
+**Two access questions, often confused:**
+
+| Question | Answer |
+|---|---|
+| How does an acquirer *participate in a dispute*? | Through **VROL / Mastercom**. That is the system of record for the filing, and it works with or without us. |
+| How does an acquirer *reach our platform*? | Only through **PAI** — and only if they choose to. It is optional. |
 
 **Design principle for PAI:** the acquirer/merchant view is a **projection**, not the case aggregate. `partner-bff` never returns the internal case model. It returns a `PartnerCaseView` — a deliberately narrower published language with its own lifecycle vocabulary (*Received → Awaiting Response → Response Submitted → Decided*), which stays stable even when internal stages change.
+
+**Why PAI is worth building even though it is optional:** a merchant who accepts liability through PAI *before* the cycle is sent saves the filing fee, the analyst time and the time bar. That is the cheapest possible outcome (see the lifecycles doc §3.1, stage 2 — pre-dispute). PAI is a cost-avoidance channel, not an access requirement.
 
 ### 8.2 Journey 1 — Customer raises a dispute (happy path, Mastercard e-commerce fraud)
 
@@ -982,7 +1230,7 @@ sequenceDiagram
 
 ### 8.3 Journey 2 — Acquirer / Merchant respond via PAI (second presentment)
 
-This is the journey your C4 hints at: *acquirer and merchant do not access the system directly*.
+The journey that makes the partner boundary concrete: *acquirer and merchant never get a UI in our platform*. **Path A is how this normally happens** — the acquirer works the case in the scheme's own portal and the scheme relays it to us. **Path B is the optional PAI channel** that can pre-empt Path A.
 
 ```mermaid
 sequenceDiagram
@@ -1097,9 +1345,12 @@ Note the pattern: **the UI never computes permitted actions.** `dispute-rules-sv
 
 ### 9.1 Capability comparison driving the two-adapter decision
 
-| Dimension | Mastercom (MCOM) | VROL (Visa) |
+Column headers name the **scheme**; the platform each is reached through is on the first row. See [§0.1](#01-the-three-layers-people-conflate).
+
+| Dimension | **MASTERCARD** | **VISA** |
 |---|---|---|
-| Programme | Mastercard Dispute Resolution (MDR) | Visa Claims Resolution (VCR) |
+| Platform (the system we integrate with) | **MCOM** — Mastercom | **VROL** — Visa Resolve Online |
+| Programme (the rulebook) | Mastercard Dispute Resolution (MDR) | Visa Claims Resolution (VCR) |
 | Cycles | 1st Chargeback → 2nd Presentment → Pre-Arbitration → Arbitration | Dispute (Allocation or Collaboration) → Pre-Arbitration → Arbitration |
 | Reason vocabulary | Message reason codes (4837, 4853, 4855, 4863, 4808…) | Dispute conditions (10.x fraud, 11.x auth, 12.x processing, 13.x consumer) |
 | Workflow split | Single flow, evidence-driven | **Allocation** (fraud/auth — Visa decides) vs **Collaboration** (processing/consumer) |
@@ -1125,7 +1376,7 @@ These differ enough — especially **Allocation vs Collaboration**, which has no
 ### 9.3 Reliability pattern for every network call
 
 ```mermaid
-graph LR
+flowchart LR
     A["dispute-case-svc<br/>decision"] --> B["network-router-svc<br/>transactional outbox<br/>(DynamoDB)"]
     B --> C["SQS FIFO<br/>MessageGroupId = caseId<br/>(strict order per case)"]
     C --> D["scheme adapter"]
@@ -1151,7 +1402,7 @@ graph LR
 ## 10. Part I — AWS deployment architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph INET["Internet"]
         U1["Customer / Issuer browsers"]
         U2["Acquirer / Merchant systems"]
@@ -1254,7 +1505,7 @@ graph TB
 ### 11.1 PCI-DSS scope containment
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph OUT["OUT OF PCI SCOPE"]
         A["Web / mobile apps"]
         B["BFFs"]
@@ -1325,7 +1576,7 @@ The non-compensable network boundary is the most important consistency constrain
 ## 12. Part K — Strangler-fig migration roadmap
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph P0["Phase 0 — Foundation (0-3m)"]
         A1["AWS landing zone, EKS,<br/>MSK, schema registry"]
         A2["Canonical event model<br/>+ published language"]

@@ -1,0 +1,171 @@
+erDiagram
+    pc_work_dispute_txn {
+        varchar   pzInsKey            PK
+        varchar   pyID                UK
+        varchar   pyStatusWork
+        varchar   pxCurrentStage
+        varchar   pxFlowName          FK "-> pr4_rule (Rule-Obj-Flow)"
+        varchar   pxLockHandle        FK "-> pr_sys_locks"
+    }
+
+    pc_assign_worklist {
+        varchar   pzInsKey            PK "ASSIGN-WORKLIST <handle>"
+        varchar   pxObjClass             "Assign-Worklist"
+        varchar   pxRefObjectInsKey   FK "-> pc_work_dispute_txn.pzInsKey"
+        varchar   pxRefObjectKey         "denormalised work ID"
+        varchar   pxRefObjectClass
+        varchar   pxAssignedOperatorID   "the analyst holding it"
+        varchar   pyAssignmentStatus     "New / Open / Pending"
+        varchar   pxTaskLabel            "Review Evidence / Adjudicate"
+        varchar   pxFlowName
+        numeric   pxUrgencyAssign        "drives pull ordering"
+        timestamp pxGoalTime
+        timestamp pxDeadlineTime         "SLA deadline"
+        timestamp pxCreateDateTime
+    }
+
+    pc_assign_workbasket {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "Assign-WorkBasket"
+        varchar   pxRefObjectInsKey   FK
+        varchar   pxRefObjectKey
+        varchar   pxAssignedOperatorID   "holds the WORKBASKET name"
+        varchar   pyAssignmentStatus
+        varchar   pxTaskLabel
+        varchar   pxFlowName
+        numeric   pxUrgencyAssign
+        timestamp pxGoalTime
+        timestamp pxDeadlineTime
+        timestamp pxCreateDateTime
+    }
+
+    pc_history_work {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "History-Work-Dispute-*"
+        varchar   pxHistoryForReference FK "-> work object pzInsKey"
+        numeric   pxInsHistoryID         "sequence within the case"
+        varchar   pyPerformer            "operator ID"
+        timestamp pyPerformDateTime
+        varchar   pxHistoryClass
+        varchar   pxHistoryDataType      "Assignment / Status / Flow / Field"
+        varchar   pyMessageKey           "localised audit message key"
+        clob      pyMemo                 "free-text rationale"
+    }
+
+    pc_link_attachment {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "Link-Attachment"
+        varchar   pxLinkedRefTo       FK "-> work object pzInsKey"
+        varchar   pxAttachDataKey     FK "-> pc_data_workattach.pzInsKey"
+        varchar   pyAttachName
+        varchar   pyCategory             "Evidence / Correspondence / NetworkDoc"
+        clob      pyNote
+        varchar   pxCreateOperator
+        timestamp pxCreateDateTime
+    }
+
+    pc_data_workattach {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "Data-WorkAttach-File"
+        varchar   pyAttachName
+        clob      pyAttachStream         "base64 body - bloats the DB"
+        varchar   pyAttachExtension
+        varchar   pyTopic
+        timestamp pxCreateDateTime
+    }
+
+    pr_sys_queue_sla {
+        varchar   pzInsKey            PK
+        varchar   pyObjClass             "System-Queue-ServiceLevel"
+        varchar   pxRefObjectInsKey   FK "-> work object or assignment"
+        varchar   pyServiceLevelName  FK "-> pr4_rule (Rule-Obj-ServiceLevel)"
+        varchar   pyItemStatus           "Scheduled / Done / Broken"
+        varchar   pyEscalationAction     "notify / raise urgency / route"
+        timestamp pyMinimumDateTimeForProcessing "when the tickler fires"
+        timestamp pxCreateDateTime
+    }
+
+    pc_index_disputetxn {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "Index-DisputeTxn (Declare Index)"
+        varchar   pxInsIndexedKey     FK "-> pc_work_dispute_txn.pzInsKey"
+        varchar   pyTransactionID     UK "the dedup key"
+        varchar   pyCardID
+        varchar   pyStatusWork           "open-status filter for dedup"
+        numeric   pyDisputedAmount
+        timestamp pyTransactionDate
+    }
+
+    pr_sys_locks {
+        varchar   pzInsKey            PK "the lock handle"
+        varchar   pyLockHandle        UK
+        varchar   pxUpdateOpName         "who holds it"
+        varchar   pySystemName           "which node"
+        timestamp pxExpireDateTime       "default 30 min"
+    }
+
+    pr_sys_queues {
+        varchar   pzInsKey            PK
+        varchar   pyClassName
+        varchar   pyQueueName
+        varchar   pyItemStatus
+        varchar   pyEntryRef          FK
+        smallint  pyAttempts
+        clob      pyLastMessage
+        timestamp pyMinimumDateTimeForProcessing
+    }
+
+    pr4_base {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "Rule-"
+        varchar   pyRuleSet           FK "PegaCS-SmartDispute / PegaFS / custom"
+        varchar   pyRuleSetVersion       "01-05-17"
+        varchar   pyClassName            "applies-to class"
+        varchar   pyRuleName
+        varchar   pyRuleAvailable        "Available / Blocked / Withdrawn"
+        varchar   pyCircumstanceProp     "e.g. pySchemeNetwork"
+        varchar   pyCircumstanceVal      "e.g. MASTERCARD"
+        timestamp pyStartDate            "date-circumstanced rules"
+        timestamp pyEndDate
+    }
+
+    pr4_rule {
+        varchar   pzInsKey            PK
+        varchar   pxObjClass             "Rule-Obj-Flow | Rule-Decision-Table | Rule-Obj-ServiceLevel | Rule-Connect-REST"
+        varchar   pyRuleName          UK
+        varchar   pyClassName
+        varchar   pyRuleSet
+        varchar   pyRuleSetVersion
+        varchar   pyCircumstanceProp
+        varchar   pyCircumstanceVal
+        varchar   pyRuleAvailable
+        timestamp pxUpdateDateTime
+        varchar   pxUpdateOpName
+        blob      pzPVStream             "THE RULE LOGIC - reason codes, time bars, flows"
+    }
+
+    pr4_rule_vw {
+        varchar   pzInsKey            PK
+        varchar   pyRuleName
+        varchar   pyClassName
+        varchar   pyRuleSet
+        varchar   pyRuleSetVersion
+        varchar   pzRuleResolutionRank   "assembled resolution ordering"
+    }
+
+    pc_work_dispute_txn ||--o{ pc_assign_worklist   : "assigns to operator"
+    pc_work_dispute_txn ||--o{ pc_assign_workbasket : "queues to workbasket"
+    pc_work_dispute_txn ||--o{ pc_history_work      : "audits every transition"
+    pc_work_dispute_txn ||--o{ pc_link_attachment   : "links documents"
+    pc_link_attachment  }o--|| pc_data_workattach   : "resolves to body"
+    pc_work_dispute_txn ||--o{ pr_sys_queue_sla     : "schedules ticklers"
+    pc_work_dispute_txn ||--o| pc_index_disputetxn  : "exposed for dedup"
+    pc_work_dispute_txn ||..o| pr_sys_locks         : "pessimistically locked by"
+
+    pr4_base ||--o{ pr4_rule    : "specialises into concrete rules"
+    pr4_rule ||--o{ pr4_rule_vw : "resolved through"
+
+    pr4_rule ||..o{ pc_work_dispute_txn : "Rule-Obj-Flow drives stage machine"
+    pr4_rule ||..o{ pc_assign_worklist  : "Rule-Obj-Flow creates assignment"
+    pr4_rule ||..o{ pr_sys_queue_sla    : "Rule-Obj-ServiceLevel schedules"
+    pr4_rule ||..o{ pr_sys_queues       : "Rule-Connect-REST failure queued"

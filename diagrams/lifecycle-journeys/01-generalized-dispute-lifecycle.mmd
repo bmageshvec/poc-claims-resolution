@@ -1,0 +1,42 @@
+flowchart TB
+    subgraph PRE["BEFORE A DISPUTE EXISTS"]
+        direction TB
+        S1["<b>1 · PRESENTMENT</b><br/>Acquirer → Network → Issuer<br/>transaction cleared and settled<br/><i>this is where settlementNetwork is set</i>"]
+        S2["<b>2 · PRE-DISPUTE</b>  (optional)<br/>Cardholder contacts issuer · issuer queries merchant<br/>Visa: RDR / Order Insight · MC: Ethoca / Consumer Clarity"]
+        S1 --> S2
+    end
+
+    S2 --> Q1{"Merchant refunds<br/>or issue explained?"}
+    Q1 -->|Yes| E1(["RESOLVED — no formal dispute<br/>cheapest possible outcome"])
+    Q1 -->|No| S3
+
+    subgraph FORMAL["THE FORMAL DISPUTE LIFECYCLE — the 4 stages your SME counts"]
+        direction TB
+        S3["<b>3 · DISPUTE / CHARGEBACK</b><br/><b>ISSUER</b> files · funds move acquirer → issuer<br/>Visa: Dispute · MC: First Chargeback"]
+        S4["<b>4 · RESPONSE</b><br/><b>ACQUIRER / MERCHANT</b> defends<br/>Visa: Dispute Response · MC: Second Presentment"]
+        S5["<b>5 · PRE-ARBITRATION</b><br/>initiator varies — see note<br/>last chance to settle bilaterally"]
+        S6["<b>6 · ARBITRATION</b><br/><b>NETWORK</b> rules · binding · loser pays fees"]
+        S3 --> Q2{"Acquirer<br/>responds?"}
+        Q2 -->|"No / accepts liability"| E2(["ISSUER WINS<br/>chargeback stands"])
+        Q2 -->|Defends| S4
+        S4 --> Q3{"Issuer accepts<br/>the evidence?"}
+        Q3 -->|Yes| E3(["ISSUER CONCEDES<br/>provisional credit reversed"])
+        Q3 -->|No| S5
+        S5 --> Q4{"Other side<br/>accepts?"}
+        Q4 -->|Yes| E4(["SETTLED BILATERALLY<br/>no network fee"])
+        Q4 -->|"Declines / lapses"| S6
+        S6 --> E5(["NETWORK RULING<br/>binding on both parties"])
+    end
+
+    COMP["<b>COMPLIANCE</b>  (independent flow)<br/>Pre-Compliance → Compliance<br/>for rule violations with financial loss<br/>where no chargeback right exists"]
+    S1 -.->|"no dispute right,<br/>but a rule was broken"| COMP
+    COMP -.-> E6(["COMPLIANCE RULING"])
+
+    classDef stage fill:#0d3b66,color:#fff,stroke:#0d3b66,stroke-width:2px
+    classDef gate fill:#e9c46a,color:#000,stroke:#c9971a
+    classDef exit fill:#2a9d8f,color:#fff,stroke:#1d7a6f
+    classDef comp fill:#6c757d,color:#fff,stroke:#495057
+    class S1,S2,S3,S4,S5,S6 stage
+    class Q1,Q2,Q3,Q4 gate
+    class E1,E2,E3,E4,E5,E6 exit
+    class COMP comp

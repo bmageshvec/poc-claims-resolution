@@ -1,4 +1,5 @@
 stateDiagram-v2
+    direction TB
     [*] --> ClaimSubmitted
     ClaimSubmitted --> ClaimAccepted: validation + dedup pass
     ClaimSubmitted --> ClaimRejected: duplicate / not entitled

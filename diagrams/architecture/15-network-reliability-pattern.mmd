@@ -1,4 +1,4 @@
-graph LR
+flowchart LR
     A["dispute-case-svc<br/>decision"] --> B["network-router-svc<br/>transactional outbox<br/>(DynamoDB)"]
     B --> C["SQS FIFO<br/>MessageGroupId = caseId<br/>(strict order per case)"]
     C --> D["scheme adapter"]

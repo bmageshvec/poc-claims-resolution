@@ -23,7 +23,7 @@ sequenceDiagram
     SR->>BIN: Lookup(accountRange, effectiveDate=txnDate)
     BIN-->>SR: {brand:MASTERCARD, product:WORLD, region:US, coBadge:[]}
     SR->>SR: Reconcile card brand vs settlementNetwork<br/>settlementNetwork WINS on conflict
-    SR-->>CI: SchemeDecision{network:MCOM, ruleSetVersion:MDR-2026.1,<br/>basis:SETTLEMENT_NETWORK, decisionId}
+    SR-->>CI: SchemeDecision{network:MASTERCARD, ruleSetVersion:MDR-2026.1,<br/>basis:SETTLEMENT_NETWORK, decisionId}
     CI->>DC: ClaimAccepted(+SchemeDecision)
     DC->>NR: SubmitNetworkCycle(caseId, cycle=FIRST_CHARGEBACK)
     NR->>NR: strategy lookup by SchemeDecision.network

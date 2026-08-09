@@ -1,0 +1,52 @@
+sequenceDiagram
+    autonumber
+    actor SC as Sarah Chen
+    participant CI as claim-intake-svc
+    participant SR as scheme-resolution-svc
+    participant DC as dispute-case-svc
+    participant RU as dispute-rules-svc
+    participant EV as evidence-svc
+    participant FP as financial-posting-svc
+    participant MC as mcom-adapter-svc
+    participant MCOM as MCOM (Mastercom)
+    actor MER as TECHGEAR-ONLINE
+
+    Note over SC,CI: Mon 23 Mar 2026 - intake identical
+    CI->>SR: ResolveScheme(cardRef, txn)
+    SR-->>CI: {network:MASTERCARD, basis:SETTLEMENT_NETWORK}
+    CI--)DC: ClaimAccepted
+    DC->>RU: assess(4855, asOf=3 Mar 2026)
+    RU-->>DC: right=YES, reasonCode=4855, timeBar=120d,<br/>preConditions=[MERCHANT_CONTACT_EVIDENCE,<br/>EXPECTED_DELIVERY_DATE_PASSED]
+
+    rect rgb(240, 240, 240)
+        Note over DC,EV: DIVERGENCE - MDR demands the<br/>merchant-contact evidence up front
+        DC->>EV: request merchant-contact evidence
+        EV-->>SC: "Please upload your emails to the merchant"
+        SC->>EV: 2 email screenshots, 16 & 19 Mar
+        EV->>EV: AV scan, classify, redact
+        EV-->>DC: EvidenceBundled(manifestId)
+        Note over DC,EV: 4 days spent gathering - no Visa equivalent
+    end
+
+    Note over DC,FP: Wed 1 Apr 2026 - Reg E 10bd
+    DC->>FP: IssuePosting(PROVISIONAL_CREDIT, $249.99)
+    DC--)SC: "Temporary credit applied"
+
+    Note over DC,MCOM: CYCLE 1 - FIRST CHARGEBACK - Tue 7 Apr 2026
+    DC->>MC: SubmitNetworkCycle(FIRST)
+    MC->>MC: ACL translate to MDR wire format
+    MC->>MCOM: chargeback 4855 + document set
+    MCOM-->>MC: ack {mcomCaseId, responseDue: 22 May}
+    MCOM->>MER: chargeback notification via acquirer
+    MC--)DC: NetworkMessageSent
+
+    Note over MER,MCOM: CYCLE 2 - SECOND PRESENTMENT
+    MER-->>MER: no proof of delivery
+    Note over MER,MCOM: 45-day window lapses - Fri 22 May 2026
+    MCOM-->>MC: no second presentment - chargeback stands
+    MC--)DC: NetworkResponseReceived(NO_RESPONSE)
+
+    Note over DC,SC: Mon 25 May 2026
+    DC->>DC: outcome=UPHELD
+    DC->>FP: IssuePosting(FINAL_CREDIT)
+    DC--)SC: "Resolved in your favour"
