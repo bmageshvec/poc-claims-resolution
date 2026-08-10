@@ -1,0 +1,39 @@
+flowchart TB
+    P1{"Is there a dispute, dispute response<br/>or pre-arbitration right?"}
+    P2(["Use the normal<br/>Allocation or Collaboration flow"])
+    P3{"Financial loss caused by<br/>a Visa rule violation?"}
+    P4(["No route — cannot file"])
+    P5["<b>PRE-COMPLIANCE</b> filed<br/>by Issuer or Acquirer"]
+    P6{"Counterparty responds<br/>within 30 days?"}
+    P7(["<b>DEEMED FULLY LIABLE</b><br/>treated as Accept Full — resolved"])
+    P8{"Response"}
+    P9(["<b>RESOLVED</b>"])
+    P10["<b>COMPLIANCE</b> filed<br/>with the network"]
+    P11["Network acknowledges, reviews,<br/>and issues <b>final ruling</b> on liability"]
+    P12{"Dispute amount<br/>at least USD 5,000?"}
+    P13["<b>APPEAL</b> by the liable party<br/>ruling on appeal is final"]
+    P14(["<b>CLOSED</b>"])
+
+    P1 -->|"Yes"| P2
+    P1 -->|"No"| P3
+    P3 -->|"No"| P4
+    P3 -->|"Yes"| P5 --> P6
+    P6 -->|"No"| P7
+    P6 -->|"Yes"| P8
+    P8 -->|"Accept"| P9
+    P8 -->|"Decline"| P10 --> P11 --> P12
+    P12 -->|"Yes — party dissatisfied"| P13 --> P14
+    P12 -->|"No"| P14
+    P7 --> P14
+    P9 --> P14
+
+    classDef party fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef network fill:#1A1F71,color:#FFFFFF,stroke:#F7B600,stroke-width:3px
+    classDef gate fill:#E9C46A,color:#000000,stroke:#C9971A
+    classDef done fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:2px
+    classDef bad fill:#D1495B,color:#FFFFFF,stroke:#9D2235,stroke-width:2px
+    class P5,P10 party
+    class P11,P13 network
+    class P1,P3,P6,P8,P12 gate
+    class P2,P7,P9,P14 done
+    class P4 bad

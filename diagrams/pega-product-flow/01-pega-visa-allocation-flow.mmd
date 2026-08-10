@@ -1,0 +1,41 @@
+flowchart TB
+    A1["<b>Cardholder disputes</b><br/>a transaction"]
+    A2["<b>ISSUER</b> sends transaction + chargeback reason<br/>to Acquirer via the card network"]
+    A3{"Acquirer / merchant<br/>agree?"}
+    A4(["<b>RESOLVED</b><br/>chargeback stands"])
+    A5["<b>ACQUIRER</b> initiates<br/><b>pre-arbitration</b> against the Issuer"]
+    A6{"Issuer response"}
+    A7(["<b>RESOLVED</b><br/>Issuer accepts liability"])
+    A8["<b>Partial acceptance</b><br/>remainder treated as declined"]
+    A9["Issuer processes liability on accepted amount:<br/><b>write-off</b> or <b>cardholder liable</b>"]
+    A10{"Acquirer<br/>satisfied?"}
+    A11["<b>ACQUIRER</b> files<br/><b>arbitration</b> with the network"]
+    A12["Network acknowledges, reviews,<br/>and issues <b>final ruling</b> on liability"]
+    A13{"Dispute amount<br/>at least USD 5,000?"}
+    A14["<b>APPEAL</b> by either party<br/>ruling on appeal is final"]
+    A15(["<b>CLOSED</b>"])
+
+    A1 --> A2 --> A3
+    A3 -->|"Yes — no response"| A4
+    A3 -->|"No"| A5
+    A5 --> A6
+    A6 -->|"Accept"| A7
+    A6 -->|"Partial accept"| A8 --> A9 --> A10
+    A6 -->|"Decline"| A10
+    A10 -->|"Yes"| A15
+    A10 -->|"No"| A11 --> A12 --> A13
+    A13 -->|"Yes — party dissatisfied"| A14 --> A15
+    A13 -->|"No"| A15
+    A4 --> A15
+    A7 --> A15
+
+    classDef issuer fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef acquirer fill:#E76F51,color:#FFFFFF,stroke:#C1440E,stroke-width:2px
+    classDef network fill:#1A1F71,color:#FFFFFF,stroke:#F7B600,stroke-width:3px
+    classDef gate fill:#E9C46A,color:#000000,stroke:#C9971A
+    classDef done fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:2px
+    class A2,A8,A9 issuer
+    class A5,A11 acquirer
+    class A12,A14 network
+    class A3,A6,A10,A13 gate
+    class A4,A7,A15 done

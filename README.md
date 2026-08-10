@@ -18,7 +18,8 @@ dispute-architecture/
 │   ├── C4_L1_SystemContext_DisputePlatform.svg     ← ★ presentation master, rendered
 │   ├── architecture/                               ← 18 .mmd — from the TO-BE architecture doc
 │   ├── ERD/                                        ←  4 .mmd — from the AS-IS schema doc
-│   └── lifecycle-journeys/                         ←  8 .mmd — from the lifecycles doc
+│   ├── lifecycle-journeys/                         ←  8 .mmd — from the lifecycles doc
+│   └── pega-product-flow/                          ←  3 .mmd — from the Pega product-flow doc
 └── source/
     └── C4_L1_SystemContext_DisputePlatform.drawio  ← ★ presentation master, editable
 ```
@@ -32,6 +33,7 @@ dispute-architecture/
 | [**`docs/dispute-claims-resolution-architecture.md` §0**](docs/dispute-claims-resolution-architecture.md#0-terminology--read-this-first) | **START HERE — shared glossary.** Scheme vs platform vs programme (VISA/VROL/VCR, MASTERCARD/MCOM/MDR), parties, lifecycle vocabulary, per-scheme terms, DDD terms, and the words that mean two different things depending on the scheme |
 | [`docs/dispute-claims-resolution-architecture.md`](docs/dispute-claims-resolution-architecture.md) | **TO-BE** — DDD bounded contexts, 22 microservices, C4 L1–L3, BIN routing decision, AWS deployment, migration roadmap |
 | [`docs/pega-lite-db-schema.md`](docs/pega-lite-db-schema.md) | **AS-IS** — the Pega Smart Dispute "lite" physical DB schema (~35 tables), Mermaid ERD legend, 4 ERDs, MCOM/VROL integration tables, table→bounded-context migration map |
+| [`docs/pega-smart-dispute-product-flow.md`](docs/pega-smart-dispute-product-flow.md) | **AS-IS PRODUCT** — the dispute flow as *Pega* documents it (Smart Dispute Agentic Automation 24.2, Pega Academy): Visa classification, early resolution, the Allocation and Collaboration flows, pre-compliance/compliance, good faith, recall & withdraw. Independently confirms the pre-arbitration filer, and surfaces 7 gaps in our model incl. **appeal** and **fund position** |
 | [`docs/scheme-lifecycles-and-customer-journeys.md`](docs/scheme-lifecycles-and-customer-journeys.md) | **SCHEME BEHAVIOUR** — an at-a-glance two-path view, a generalized 6-stage lifecycle, Visa VCR (4 stages / 3 in Allocation) and Mastercard MDR (4 cycles), then one worked example ($249.99 goods-not-received) through both schemes, happy and negative paths. Validated against [Visa's VCR merchant guide](https://usa.visa.com/dam/VCOM/download/merchants/visa-claims-resolution-efficient-dispute-processing-for-merchants-VBS-14.APR.16.pdf), [Mastercom's Dispute Resolution Cycle](https://developer.mastercard.com/mastercom/documentation/dispute-resolution-cycle/) and [Rivero](https://rivero.tech/blog/dispute-lifecycle-explained) |
 
 ## Main document — section index
@@ -101,7 +103,15 @@ Diagrams are grouped by the document that embeds them.
 | `06-journey-c-mastercard-happy-path` | sequence | Same case on MDR — 21 days slower, day 83 |
 | `07-journey-d-mastercard-negative-path` | sequence | All 4 cycles → issuer loses, day 134, Reg E 90d breached by 24 |
 
-All 30 diagrams validated against the Mermaid parser — 0 failures. All dates, day-counts and scheme response windows in the journeys verified programmatically.
+### `diagrams/pega-product-flow/` — 3, from the Pega product-flow doc
+
+| File | Type | Shows |
+|---|---|---|
+| `01-pega-visa-allocation-flow` | flowchart | Pega's Allocation flow — **acquirer** files pre-arb; funds stay with issuer |
+| `02-pega-visa-collaboration-flow` | flowchart | Pega's Collaboration flow — **issuer** files pre-arb; funds return to acquirer on decline |
+| `03-pega-precompliance-compliance-flow` | flowchart | Independent compliance route; 30-day silence = full liability |
+
+All 33 diagrams validated against the Mermaid parser — 0 failures. All dates, day-counts and scheme response windows in the journeys verified programmatically.
 
 ## Which diagram type for which job
 

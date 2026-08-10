@@ -1,0 +1,40 @@
+flowchart TB
+    C1["<b>Cardholder disputes</b><br/>a transaction"]
+    C2["<b>ISSUER</b> sends transaction + chargeback reason<br/>to Acquirer via the card network"]
+    C3{"Acquirer response<br/>(may consult merchant)"}
+    C4(["<b>RESOLVED</b><br/>in the Issuer's favour"])
+    C5["<b>Partial acceptance</b><br/>remainder treated as rejected"]
+    C6{"Issuer accepts<br/>the rejection?"}
+    C7(["<b>CLOSED</b><br/>Issuer accepts"])
+    C8["<b>ISSUER</b> initiates<br/><b>pre-arbitration</b> against the Acquirer"]
+    C9["Acquirer reviews with merchant,<br/>sends accept or reject"]
+    C10{"Customer<br/>satisfied?"}
+    C11["<b>ISSUER</b> files<br/><b>arbitration</b> with the network"]
+    C12["Network acknowledges, reviews,<br/>and issues <b>final ruling</b> on liability"]
+    C13{"Dispute amount<br/>at least USD 5,000?"}
+    C14["<b>APPEAL</b> by either party<br/>ruling on appeal is final"]
+    C15(["<b>CLOSED</b>"])
+
+    C1 --> C2 --> C3
+    C3 -->|"Accept"| C4
+    C3 -->|"Partial accept"| C5 --> C6
+    C3 -->|"Reject"| C6
+    C6 -->|"Yes"| C7
+    C6 -->|"No"| C8 --> C9 --> C10
+    C10 -->|"Yes"| C15
+    C10 -->|"No"| C11 --> C12 --> C13
+    C13 -->|"Yes — party dissatisfied"| C14 --> C15
+    C13 -->|"No"| C15
+    C4 --> C15
+    C7 --> C15
+
+    classDef issuer fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef acquirer fill:#E76F51,color:#FFFFFF,stroke:#C1440E,stroke-width:2px
+    classDef network fill:#1A1F71,color:#FFFFFF,stroke:#F7B600,stroke-width:3px
+    classDef gate fill:#E9C46A,color:#000000,stroke:#C9971A
+    classDef done fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:2px
+    class C2,C8,C11 issuer
+    class C5,C9 acquirer
+    class C12,C14 network
+    class C3,C6,C10,C13 gate
+    class C4,C7,C15 done

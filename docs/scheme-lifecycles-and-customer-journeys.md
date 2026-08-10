@@ -56,6 +56,8 @@
 | **Who files pre-arbitration** | **ACQUIRER** | **ISSUER** | **ISSUER** |
 | **Who escalates to arbitration** | **ACQUIRER** | **ISSUER** | **ISSUER** |
 | **Who rules** | **Visa** | **Visa** | **Mastercard** |
+| **Who holds the funds on filing** | **ISSUER** | **ISSUER** | **ISSUER** |
+| **Who holds the funds until the ruling** | **ISSUER** — never swaps | **ACQUIRER** once the chargeback is declined | **ACQUIRER** once a second presentment is made |
 | Stages | **3** | **4** | **4** |
 
 ```mermaid
@@ -104,13 +106,42 @@ flowchart LR
 
 So the filer follows from the workflow, and the workflow follows from the dispute category. Two hops, no exceptions.
 
-### 1.2 Why Allocation has one fewer stage
+### 1.2 Who holds the money while the dispute runs
+
+**The general rule: filing pulls the funds to the issuer, and a decline pushes them back.** Each rejection swaps the holder.
+
+| Event | Funds move | Source |
+|---|---|---|
+| Issuer files the chargeback | Acquirer → **Issuer** | MC: *"The chargeback transfers funds from the acquirer to the issuer"* |
+| Acquirer declines / re-presents | Issuer → **Acquirer** | MC: *"A second presentment transfers funds from an issuer to an acquirer"* · Visa Collaboration: *"if Acquirer declines the chargeback the funds are moved back to Acquirer"* |
+| Network rules | To whichever party wins | — |
+
+**Visa Allocation is the exception — there is no swap.**
+
+> *"In Allocation cases, Visa sends the funds to the Issuer on chargeback submission, and the funds stay with the Issuer until liability is decided."* — Pega
+
+That follows from the structure: Visa has already ruled on validity at stage 1, so the acquirer's pre-arbitration is a challenge to a decision Visa has made, not a rejection of a claim the issuer made. The money doesn't move until Visa says so.
+
+**Why this matters more than it looks — it compounds with provisional credit.** Under Reg E the issuer has already credited the cardholder, and it **cannot** reverse that while the investigation is open. So once the funds go back to the acquirer, the issuer is out of pocket twice over:
+
+| | Cardholder's account | Disputed funds | Issuer's position |
+|---|---|---|---|
+| After provisional credit | Made whole | With the acquirer | **Out of pocket** |
+| After the chargeback is filed | Made whole | With the issuer | Flat |
+| **After the acquirer declines** | Made whole | **Back with the acquirer** | **Out of pocket again** |
+| After the ruling | Depends on outcome | To the winner | Settled |
+
+In **Journey B** that exposed period runs from day 30 to day 111 — **81 days** the bank funds someone else's money and cannot take it back. In an **Allocation** dispute the same case never reaches that state.
+
+> **Architectural consequence.** Nothing in the current model tracks fund position during a dispute. `financial-posting-svc` (BC-5) records postings to the cardholder but has no notion of where the *disputed amount* sits between the parties. That is a treasury exposure the platform cannot currently report on — see the [Pega product-flow doc §8](./pega-smart-dispute-product-flow.md#8-what-this-changes-for-our-architecture), gap 2.
+
+### 1.3 Why Allocation has one fewer stage
 
 Visa's words: *"For fraud and authorization disputes, **a cycle has been eliminated** to streamline the process."*
 
 In Allocation, Visa evaluates the dispute against VisaNet data and rules on validity itself at stage 1 — so there is nothing for the acquirer to "respond" to. The acquirer's only route to challenge is to file pre-arbitration. That is why the filer flips.
 
-### 1.3 Where to drill down
+### 1.4 Where to drill down
 
 | Question | Section |
 |---|---|
@@ -542,6 +573,7 @@ Consequence for the case model: `pyChargebackRightFlag` cannot be set to `Y` on 
 | Amount rules across cycles | No published amount ladder | **Non-increasing chain** enforced at every cycle (§6.3) |
 | Pre-dispute deflection | Order Insight, RDR, Merchant Purchase Inquiry | Ethoca alerts, Consumer Clarity, **Mastercom Collaboration requests** |
 | Liability decided by the network at stage 1 | **Yes**, in Allocation | **Never** |
+| Does the fund holder swap on a decline? | **Allocation: no** — stays with the issuer throughout · **Collaboration: yes** — back to the acquirer | **Yes** — the second presentment moves funds issuer → acquirer |
 
 > ⚠ **"Collaboration" appears in both columns above meaning different things.** Visa's is a *workflow*; Mastercard's is a *pre-dispute alert*. See §14.3 — this is the highest-risk naming collision in the domain.
 
@@ -1015,7 +1047,7 @@ Visa's merchant guide contains the two workflow diagrams that settle the filing-
 |---|---|---|
 | Two workflows, split by dispute category | *"following one of two new processes"* — "Fraud and Authorization" / "Consumer and Processing Errors" | §1, §5.2 |
 | Allocation = 10.x + 11.x; Collaboration = 12.x + 13.x | The four categories: 10 Fraud, 11 Authorization, 12 Processing Errors, 13 Consumer Disputes | §1, §3.1 |
-| **Allocation has one fewer stage** | *"For fraud and authorization disputes, **a cycle has been eliminated**"* | §1.2, §5.1 |
+| **Allocation has one fewer stage** | *"For fraud and authorization disputes, **a cycle has been eliminated**"* | §1.3, §5.1 |
 | **Allocation: acquirer files pre-arbitration** | Fraud/Auth flow reads Dispute VALID → **Pre-arbitration** → Pre-arbitration Response → Arbitration, with no Dispute Response step | §1, §4.1, §5.1 |
 | **Collaboration: issuer files pre-arbitration** | Consumer/Processing flow reads Dispute → **Dispute Response** → Pre-arbitration → Pre-arbitration Response → Arbitration | §1, §4.1, §5.1 |
 | **Visa rules, not the parties** | *"Final Ruling"* terminates both flows | §1.1 |
