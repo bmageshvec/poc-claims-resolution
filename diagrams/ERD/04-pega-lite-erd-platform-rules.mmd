@@ -9,7 +9,7 @@ erDiagram
     }
 
     pc_assign_worklist {
-        varchar   pzInsKey            PK "ASSIGN-WORKLIST <handle>"
+        varchar   pzInsKey            PK "ASSIGN-WORKLIST handle"
         varchar   pxObjClass             "Assign-Worklist"
         varchar   pxRefObjectInsKey   FK "-> pc_work_dispute_txn.pzInsKey"
         varchar   pxRefObjectKey         "denormalised work ID"

@@ -1,108 +1,106 @@
 flowchart TB
-    subgraph EDGE["Edge / Experience"]
-        WEB["Customer Web + Mobile<br/>[React / React Native]"]
-        OPS["Issuer Ops Workspace<br/>[React micro-frontends]"]
-        CBFF["customer-bff<br/>[Spring Boot / EKS]"]
-        OBFF["issuer-ops-bff<br/>[Spring Boot / EKS]"]
-        PBFF["partner-bff (PAI)<br/>[Spring Boot / EKS]"]
-        APIGW["API Gateway + WAF<br/>[AWS APIGW / ALB]"]
+    subgraph EDGE["Edge and experience"]
+        direction LR
+        WEB["Customer web and mobile"]
+        OPS["Issuer operations workspace"]
+        CBFF["Customer BFF"]
+        OBFF["Issuer-Ops BFF"]
+        PBFF["Partner gateway · optional"]
+        GW["API gateway + WAF<br/>mutual TLS for partners"]
     end
-
-    subgraph CORESVC["Core Domain Services"]
-        CIS["claim-intake-svc"]
-        DCS["dispute-case-svc<br/>+ Step Functions saga"]
-        DRS["dispute-rules-svc<br/>[DMN engine]"]
-        SRS["scheme-resolution-svc"]
-        NRS["network-router-svc"]
+    subgraph CORESVC["Core domain capabilities"]
+        direction LR
+        CIS["Claim intake"]
+        DCS["Dispute case<br/>+ saga orchestration"]
+        DRS["Eligibility and rules<br/>decision engine"]
+        SRS["Scheme resolution"]
+        NRS["Network routing<br/>outbox"]
     end
-
-    subgraph ADPT["Scheme Adapters (isolated, PCI-scoped)"]
-        MCA["mcom-adapter-svc"]
-        VRA["vrol-adapter-svc"]
+    subgraph ADPT["Scheme adapters — PCI-scoped, isolated"]
+        direction LR
+        MCA["Mastercard adapter<br/>Filer · Poller · Journal · ACL"]
+        VRA["Visa adapter<br/>Filer · Poller · Journal · ACL"]
     end
-
-    subgraph SUPSVC["Supporting Services"]
-        EVS["evidence-svc"]
-        FPS["financial-posting-svc"]
-        CTS["compliance-timer-svc"]
-        WAS["work-assignment-svc"]
-        CRS["correspondence-svc"]
+    subgraph ASSURE["Assurance"]
+        REC["Reconciliation<br/>independent query path"]
     end
-
+    subgraph SUPSVC["Supporting capabilities"]
+        direction LR
+        EVS["Evidence"]
+        FPS["Financial posting"]
+        CTS["Compliance and timers"]
+        WAS["Work assignment"]
+        CRS["Correspondence"]
+    end
     subgraph INTEG["Integration ACLs"]
-        TRS["transaction-retrieval-svc"]
-        PRS["party-reference-svc"]
-        FGS["fraud-gateway-svc"]
-        PGB["pega-bridge-svc<br/>(migration)"]
+        direction LR
+        TRS["Transaction retrieval"]
+        PRS["Party reference"]
+        FGS["Fraud gateway"]
+        PGB["Legacy bridge · migration"]
     end
-
-    subgraph DATA["Data & Platform"]
-        MSK[("MSK<br/>Event Backbone")]
-        AUR[("Aurora PostgreSQL<br/>per-service schemas")]
-        DDB[("DynamoDB<br/>BIN ranges, outbox, timers")]
-        S3[("S3<br/>evidence + audit")]
-        OS[("OpenSearch / Redshift<br/>read models")]
+    subgraph DATA["Data and platform"]
+        direction LR
+        BUS[("Event backbone")]
+        TX[("TX stores<br/>per capability")]
+        KV[("KV stores")]
+        OBJ[("Object storage<br/>evidence + audit")]
+        IDX[("Read models")]
     end
-
-    WEB --> APIGW --> CBFF
-    OPS --> APIGW --> OBFF
-    APIGW --> PBFF
-
+    WEB --> GW --> CBFF
+    OPS --> GW --> OBFF
+    GW --> PBFF
     CBFF --> CIS
     CBFF --> DCS
-    CBFF --> EVS
     OBFF --> DCS
     OBFF --> WAS
-    OBFF --> DRS
-    OBFF --> EVS
     PBFF --> DCS
-    PBFF --> EVS
-
     CIS --> TRS
     CIS --> PRS
     CIS --> SRS
-    CIS -->|ClaimAccepted| MSK
-    MSK --> DCS
-
+    CIS ==> BUS
+    BUS ==> DCS
     DCS --> DRS
     DCS --> FGS
     DCS --> NRS
     DCS --> FPS
     DCS --> CTS
     DCS --> EVS
-    DCS -->|events| MSK
-    MSK --> WAS
-    MSK --> CRS
-    MSK --> OS
-
-    NRS --> MCA
-    NRS --> VRA
-    MCA -->|responses| MSK
-    VRA -->|responses| MSK
-
-    CIS --- AUR
-    DCS --- AUR
-    DRS --- AUR
-    FPS --- AUR
-    WAS --- AUR
-    SRS --- DDB
-    NRS --- DDB
-    CTS --- DDB
-    EVS --- S3
-    MCA --- S3
-    VRA --- S3
-
-    PGB --- MSK
-
-    classDef exp fill:#a8dadc,color:#000
-    classDef core fill:#0d3b66,color:#fff
-    classDef adpt fill:#f4a261,color:#000
-    classDef sup fill:#457b9d,color:#fff
-    classDef integ fill:#adb5bd,color:#000
-    classDef data fill:#e9c46a,color:#000
-    class WEB,OPS,CBFF,OBFF,PBFF,APIGW exp
+    DCS ==> BUS
+    BUS ==> WAS
+    BUS ==> CRS
+    BUS ==> IDX
+    NRS ==> MCA
+    NRS ==> VRA
+    MCA ==> BUS
+    VRA ==> BUS
+    REC -.-> DCS
+    REC ==> WAS
+    CIS --- TX
+    DCS --- TX
+    DRS --- TX
+    FPS --- TX
+    WAS --- TX
+    REC --- TX
+    SRS --- KV
+    NRS --- KV
+    CTS --- KV
+    EVS --- OBJ
+    MCA --- OBJ
+    VRA --- OBJ
+    PGB --- BUS
+    classDef exp fill:#A8DADC,color:#000000,stroke:#457B9D,stroke-width:2px
+    classDef core fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef adpt fill:#F4A261,color:#000000,stroke:#C1440E,stroke-width:2px
+    classDef newbc fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:3px
+    classDef sup fill:#457B9D,color:#FFFFFF,stroke:#1D3557,stroke-width:2px
+    classDef integ fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
+    classDef data fill:#E9C46A,color:#000000,stroke:#C9971A,stroke-width:2px
+    class WEB,OPS,CBFF,OBFF,PBFF,GW exp
     class CIS,DCS,DRS,SRS,NRS core
     class MCA,VRA adpt
+    class REC newbc
     class EVS,FPS,CTS,WAS,CRS sup
     class TRS,PRS,FGS,PGB integ
-    class MSK,AUR,DDB,S3,OS data
+    class BUS,TX,KV,OBJ,IDX data
+    linkStyle default stroke:#54606C,stroke-width:1.5px

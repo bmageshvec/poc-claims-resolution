@@ -1,0 +1,46 @@
+flowchart TB
+    subgraph BC2["BC-2 · Dispute Case Management"]
+        DCS["Dispute case capability<br/>aggregate · stage machine · saga"]
+    end
+    subgraph BC4["BC-4 · Network Exchange"]
+        direction TB
+        NR["Network routing<br/>OUTBOX · per-case ordering<br/>strategy dispatch by scheme"]
+        subgraph AD["Scheme adapter — one deployable per scheme"]
+            direction LR
+            FIL["FILER · outbound<br/>ACL out · idempotency key<br/>journal BEFORE transmit"]
+            POL["POLLER · inbound<br/>scheduled fetch · persist raw<br/>acknowledge AFTER commit"]
+            JRN[("Scheme journal<br/>raw payloads · WORM<br/>never leaves the adapter")]
+            ACLIN["RESPONSE ACL<br/>scheme to canonical<br/>one event per case"]
+        end
+    end
+    subgraph BC17["BC-17 · Reconciliation and Assurance"]
+        REC["Reconciliation capability<br/>independent comparison<br/>never mutates a case"]
+    end
+    SCHEME["VROL / MCOM<br/>card scheme"]
+    BUS[("Event backbone")]
+    WA["Work assignment<br/>human queue"]
+
+    DCS -->|"SubmitNetworkCycle"| NR
+    NR ==>|"ordered per case<br/>MessageGroup = caseId"| FIL
+    FIL ==>|"1 · FILE"| SCHEME
+    FIL --- JRN
+    SCHEME ==>|"2 · POLL<br/>fetch then acknowledge"| POL
+    POL --- JRN
+    POL --> ACLIN
+    ACLIN ==>|"3 · FAN-OUT<br/>one canonical event per case"| BUS
+    BUS ==>|"per-case consumer"| DCS
+    REC -.->|"4 · RECONCILE<br/>independent query path"| SCHEME
+    REC -.->|"reads case state · never writes"| DCS
+    REC ==>|"DivergenceDetected"| WA
+
+    classDef core fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef adapter fill:#F4A261,color:#000000,stroke:#C1440E,stroke-width:2px
+    classDef newbc fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:3px
+    classDef ext fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
+    classDef store fill:#E9C46A,color:#000000,stroke:#C9971A,stroke-width:2px
+    class DCS,NR core
+    class FIL,POL,ACLIN adapter
+    class REC newbc
+    class SCHEME,WA ext
+    class JRN,BUS store
+    linkStyle default stroke:#54606C,stroke-width:1.5px

@@ -1,30 +1,33 @@
 flowchart TB
-    subgraph CORE["CORE DOMAIN — competitive differentiation, build & own"]
-        C1["Dispute Case Management<br/>& Lifecycle"]
-        C2["Eligibility, Rights<br/>& Dispute Rules"]
-        C3["Network Exchange<br/>(scheme lifecycle)"]
-        C4["Claim Intake &<br/>Triage"]
+    subgraph CORE["CORE DOMAIN — competitive differentiation · build and own"]
+        direction LR
+        C1["BC-2<br/>Dispute Case Management<br/>and Lifecycle"]
+        C2["BC-3<br/>Eligibility, Rights<br/>and Dispute Rules"]
+        C3["BC-4<br/>Network Exchange<br/>the scheme conversation"]
+        C4["BC-1<br/>Claim Intake<br/>and Triage"]
     end
     subgraph SUPPORT["SUPPORTING SUBDOMAINS — build, but commodity logic"]
-        S1["Evidence &<br/>Document Mgmt"]
-        S2["Financial Posting<br/>& Recovery"]
-        S3["Compliance,<br/>Timers & SLA"]
-        S4["Work Assignment<br/>& Queueing"]
-        S5["Partner Integration<br/>(PAI)"]
-        S6["Correspondence &<br/>Notification"]
+        direction LR
+        S1["BC-6<br/>Evidence and<br/>Document Mgmt"]
+        S2["BC-5<br/>Financial Posting<br/>and Recovery"]
+        S3["BC-7<br/>Compliance,<br/>Timers and SLA"]
+        S4["BC-8<br/>Work Assignment<br/>and Queueing"]
+        S5["BC-9<br/>Partner Integration<br/>deflection only"]
+        S6["BC-10<br/>Correspondence and<br/>Notification"]
+        S7["BC-17<br/>Reconciliation<br/>and Assurance"]
     end
-    subgraph GENERIC["GENERIC SUBDOMAINS — buy / reuse / integrate"]
-        G1["Identity & Access<br/>(Cognito / PingID)"]
-        G2["Customer, Account<br/>& Card Reference"]
-        G3["Transaction Retrieval<br/>(core banking / switch)"]
-        G4["Fraud & Risk Scoring"]
-        G5["Reporting, Analytics<br/>& Audit"]
-        G6["Tokenization /<br/>Card Vault"]
+    subgraph GENERIC["GENERIC SUBDOMAINS — integrate, do not build"]
+        direction LR
+        G1["BC-15<br/>Identity<br/>and Access"]
+        G2["BC-12<br/>Customer, Account<br/>and Card Reference"]
+        G3["BC-13<br/>Transaction Retrieval"]
+        G4["BC-14<br/>Fraud and Risk"]
+        G5["BC-11<br/>Reporting, Analytics<br/>and Audit"]
+        G6["BC-16<br/>Tokenisation<br/>Card Vault"]
     end
-
-    classDef core fill:#0d3b66,color:#fff,stroke:#0d3b66,stroke-width:2px
-    classDef sup fill:#457b9d,color:#fff,stroke:#1d3557
-    classDef gen fill:#adb5bd,color:#000,stroke:#6c757d
+    classDef core fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef sup fill:#457B9D,color:#FFFFFF,stroke:#1D3557,stroke-width:2px
+    classDef gen fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
     class C1,C2,C3,C4 core
-    class S1,S2,S3,S4,S5,S6 sup
+    class S1,S2,S3,S4,S5,S6,S7 sup
     class G1,G2,G3,G4,G5,G6 gen

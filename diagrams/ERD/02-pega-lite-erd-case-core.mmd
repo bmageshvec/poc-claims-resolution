@@ -1,6 +1,6 @@
 erDiagram
     pc_data_customer {
-        varchar   pzInsKey            PK "PEGAFS-DATA-PARTY-CUSTOMER <id>"
+        varchar   pzInsKey            PK "PEGAFS-DATA-PARTY-CUSTOMER id"
         varchar   pxObjClass             "PegaFS-Data-Party-Customer"
         varchar   pyCustomerID        UK "CIF customer number"
         varchar   pyFullName
@@ -89,7 +89,7 @@ erDiagram
     }
 
     pc_work_dispute {
-        varchar   pzInsKey            PK "PEGACS-WORK-DISPUTE CLM-<n>"
+        varchar   pzInsKey            PK "PEGACS-WORK-DISPUTE CLM-nnn"
         varchar   pxObjClass             "PegaCS-Work-Dispute"
         varchar   pyID                UK "CLM-2026-0000481922"
         varchar   pyStatusWork           "New / Open / Pending / Resolved-*"
@@ -113,7 +113,7 @@ erDiagram
     }
 
     pc_work_dispute_txn {
-        varchar   pzInsKey            PK "PEGACS-WORK-DISPUTE-TXN DTX-<n>"
+        varchar   pzInsKey            PK "PEGACS-WORK-DISPUTE-TXN DTX-nnn"
         varchar   pxObjClass             "PegaCS-Work-Dispute-Txn"
         varchar   pyID                UK "DTX-2026-0000481922"
         varchar   pxCoverInsKey       FK "-> pc_work_dispute (case containment)"

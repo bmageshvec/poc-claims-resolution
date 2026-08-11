@@ -100,21 +100,21 @@ Reconstructed from Pega's "Key points". **The acquirer initiates pre-arbitration
 
 ```mermaid
 flowchart TB
-    A1["<b>Cardholder disputes</b><br/>a transaction"]
-    A2["<b>ISSUER</b> sends transaction + chargeback reason<br/>to Acquirer via the card network"]
+    A1["Cardholder disputes<br/>a transaction"]
+    A2["ISSUER sends transaction + chargeback reason<br/>to Acquirer via the card network"]
     A3{"Acquirer / merchant<br/>agree?"}
-    A4(["<b>RESOLVED</b><br/>chargeback stands"])
-    A5["<b>ACQUIRER</b> initiates<br/><b>pre-arbitration</b> against the Issuer"]
+    A4(["RESOLVED<br/>chargeback stands"])
+    A5["ACQUIRER initiates<br/>pre-arbitration against the Issuer"]
     A6{"Issuer response"}
-    A7(["<b>RESOLVED</b><br/>Issuer accepts liability"])
-    A8["<b>Partial acceptance</b><br/>remainder treated as declined"]
-    A9["Issuer processes liability on accepted amount:<br/><b>write-off</b> or <b>cardholder liable</b>"]
+    A7(["RESOLVED<br/>Issuer accepts liability"])
+    A8["Partial acceptance<br/>remainder treated as declined"]
+    A9["Issuer processes liability on accepted amount:<br/>write-off or cardholder liable"]
     A10{"Acquirer<br/>satisfied?"}
-    A11["<b>ACQUIRER</b> files<br/><b>arbitration</b> with the network"]
-    A12["Network acknowledges, reviews,<br/>and issues <b>final ruling</b> on liability"]
+    A11["ACQUIRER files<br/>arbitration with the network"]
+    A12["Network acknowledges, reviews,<br/>and issues final ruling on liability"]
     A13{"Dispute amount<br/>at least USD 5,000?"}
-    A14["<b>APPEAL</b> by either party<br/>ruling on appeal is final"]
-    A15(["<b>CLOSED</b>"])
+    A14["APPEAL by either party<br/>ruling on appeal is final"]
+    A15(["CLOSED"])
 
     A1 --> A2 --> A3
     A3 -->|"Yes — no response"| A4
@@ -158,21 +158,21 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    C1["<b>Cardholder disputes</b><br/>a transaction"]
-    C2["<b>ISSUER</b> sends transaction + chargeback reason<br/>to Acquirer via the card network"]
+    C1["Cardholder disputes<br/>a transaction"]
+    C2["ISSUER sends transaction + chargeback reason<br/>to Acquirer via the card network"]
     C3{"Acquirer response<br/>(may consult merchant)"}
-    C4(["<b>RESOLVED</b><br/>in the Issuer's favour"])
-    C5["<b>Partial acceptance</b><br/>remainder treated as rejected"]
+    C4(["RESOLVED<br/>in the Issuer's favour"])
+    C5["Partial acceptance<br/>remainder treated as rejected"]
     C6{"Issuer accepts<br/>the rejection?"}
-    C7(["<b>CLOSED</b><br/>Issuer accepts"])
-    C8["<b>ISSUER</b> initiates<br/><b>pre-arbitration</b> against the Acquirer"]
+    C7(["CLOSED<br/>Issuer accepts"])
+    C8["ISSUER initiates<br/>pre-arbitration against the Acquirer"]
     C9["Acquirer reviews with merchant,<br/>sends accept or reject"]
     C10{"Customer<br/>satisfied?"}
-    C11["<b>ISSUER</b> files<br/><b>arbitration</b> with the network"]
-    C12["Network acknowledges, reviews,<br/>and issues <b>final ruling</b> on liability"]
+    C11["ISSUER files<br/>arbitration with the network"]
+    C12["Network acknowledges, reviews,<br/>and issues final ruling on liability"]
     C13{"Dispute amount<br/>at least USD 5,000?"}
-    C14["<b>APPEAL</b> by either party<br/>ruling on appeal is final"]
-    C15(["<b>CLOSED</b>"])
+    C14["APPEAL by either party<br/>ruling on appeal is final"]
+    C15(["CLOSED"])
 
     C1 --> C2 --> C3
     C3 -->|"Accept"| C4
@@ -229,16 +229,16 @@ flowchart TB
     P2(["Use the normal<br/>Allocation or Collaboration flow"])
     P3{"Financial loss caused by<br/>a Visa rule violation?"}
     P4(["No route — cannot file"])
-    P5["<b>PRE-COMPLIANCE</b> filed<br/>by Issuer or Acquirer"]
+    P5["PRE-COMPLIANCE filed<br/>by Issuer or Acquirer"]
     P6{"Counterparty responds<br/>within 30 days?"}
-    P7(["<b>DEEMED FULLY LIABLE</b><br/>treated as Accept Full — resolved"])
+    P7(["DEEMED FULLY LIABLE<br/>treated as Accept Full — resolved"])
     P8{"Response"}
-    P9(["<b>RESOLVED</b>"])
-    P10["<b>COMPLIANCE</b> filed<br/>with the network"]
-    P11["Network acknowledges, reviews,<br/>and issues <b>final ruling</b> on liability"]
+    P9(["RESOLVED"])
+    P10["COMPLIANCE filed<br/>with the network"]
+    P11["Network acknowledges, reviews,<br/>and issues final ruling on liability"]
     P12{"Dispute amount<br/>at least USD 5,000?"}
-    P13["<b>APPEAL</b> by the liable party<br/>ruling on appeal is final"]
-    P14(["<b>CLOSED</b>"])
+    P13["APPEAL by the liable party<br/>ruling on appeal is final"]
+    P14(["CLOSED"])
 
     P1 -->|"Yes"| P2
     P1 -->|"No"| P3

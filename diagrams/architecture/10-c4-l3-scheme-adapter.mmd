@@ -1,0 +1,45 @@
+flowchart LR
+    subgraph AD["Scheme adapter — PCI-scoped subnet"]
+        direction TB
+        LSN["Command listener<br/>ordered per case"]
+        IDEM["Idempotency guard"]
+        TRN["OUTBOUND ACL<br/>canonical to scheme"]
+        PANR["PAN resolver<br/>vault client · last mile only"]
+        DOC["Document packager"]
+        CLI["Scheme client<br/>auth · retry · circuit breaker"]
+        JRN[("Message journal<br/>append-only WORM")]
+        POLL["Poller<br/>scheduled fetch"]
+        ACK["Acknowledge<br/>AFTER commit only"]
+        RTRN["INBOUND ACL<br/>scheme to canonical"]
+        QUAR["Quarantine handler<br/>+ deadline-bearing work item"]
+        PUB["Event publisher"]
+    end
+    SCHEME["Scheme API"]
+    VAULT["Token vault"]
+    OBJ[("Evidence store")]
+    BUS[("Event backbone")]
+
+    LSN --> IDEM --> TRN --> PANR --> CLI
+    TRN --> DOC --> CLI
+    CLI --> JRN
+    CLI <--> SCHEME
+    POLL <--> SCHEME
+    POLL --> JRN
+    JRN --> ACK
+    ACK --> RTRN
+    RTRN --> PUB
+    RTRN -.->|"unparseable"| QUAR
+    QUAR --> PUB
+    PUB ==> BUS
+    PANR <--> VAULT
+    DOC --- OBJ
+
+    classDef c fill:#F4A261,color:#000000,stroke:#C1440E,stroke-width:2px
+    classDef acl fill:#E76F51,color:#FFFFFF,stroke:#A63A22,stroke-width:2px
+    classDef ext fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
+    classDef store fill:#E9C46A,color:#000000,stroke:#C9971A,stroke-width:2px
+    class LSN,IDEM,PANR,DOC,CLI,POLL,ACK,QUAR,PUB c
+    class TRN,RTRN acl
+    class SCHEME,VAULT ext
+    class JRN,OBJ,BUS store
+    linkStyle default stroke:#54606C,stroke-width:1.5px

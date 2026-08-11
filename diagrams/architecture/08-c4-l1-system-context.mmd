@@ -1,67 +1,67 @@
-flowchart TB
+flowchart LR
 
-    subgraph PERSONAS["PERSONAS"]
-        direction LR
-        CU["<b>Customer</b><br/>[Person]<br/>Cardholder raising a dispute"]
-        BO["<b>Issuer BackOffice Team</b><br/>[Person]<br/>Contact centre · disputes analyst"]
-        AC["<b>Acquirer</b><br/>[Person]<br/>Merchant's bank"]
-        ME["<b>Merchant</b><br/>[Person]<br/>Business that took the payment"]
-    end
-
-    subgraph SOFTWARE["SOFTWARE SYSTEMS"]
-        direction LR
-        PLAT["<b>Dispute Platform</b><br/>[Software System — IN SCOPE]<br/>Managed by Issuer · intake, case lifecycle,<br/>rules, evidence, postings, scheme adapters"]
-        PAI["<b>PAI</b><br/>[Software System]<br/>Partner API Interface<br/>deflection &amp; evidence channel"]
-        VROL["<b>VROL</b><br/>[External Software System]<br/>Visa Resolve Online<br/>runs the VCR programme"]
-        MCOM["<b>MCOM</b><br/>[External Software System]<br/>Mastercom<br/>runs the MDR programme"]
-    end
-
-    subgraph OTHER["OTHER SYSTEMS"]
-        direction LR
+    subgraph ISSUER["ISSUER — our organisation · this diagram is drawn from this point of view"]
+        direction TB
+        CU["Customer<br/>[Person]<br/>Cardholder raising a dispute"]
+        BO["Issuer BackOffice Team<br/>[Person]<br/>Contact centre · disputes analyst"]
+        DRP["ISSUER DISPUTE RESOLUTION PLATFORM (DRP)<br/>[Software System — IN SCOPE]<br/>intake · case lifecycle · rules · evidence ·<br/>postings · timers · scheme adapters"]
         subgraph ISSOWN["Issuer-controlled / provided"]
             direction LR
-            CBK["<b>Core Banking</b><br/>[External Software System]<br/>Ledger · CIF · cards"]
-            FRD["<b>Fraud Platform</b><br/>[External Software System]<br/>Scoring &amp; fraud cases"]
-            TV["<b>Token Vault</b><br/>[External Software System]<br/>PCI CDE"]
+            CBK["Core Banking<br/>[External System]<br/>Ledger · CIF · cards"]
+            FRD["Fraud Platform<br/>[External System]<br/>Scoring &amp; fraud cases"]
+            TV["Token Vault<br/>[External System]<br/>PCI CDE"]
         end
         subgraph THIRD["Third-party controlled / provided"]
             direction LR
-            SW["<b>Payment Switch</b><br/>[External Software System]<br/>Auth &amp; settlement records"]
-            CLD["<b>Cloud Provider</b><br/>[External Software System]<br/>AWS — hosting &amp; managed services"]
+            SW["Payment Switch<br/>[External System]<br/>Auth &amp; settlement records"]
+            CLD["Cloud Provider<br/>[External System]<br/>hosting and managed services"]
         end
     end
 
-    CU -->|"Scenario 1 — raises dispute via web form"| PLAT
-    CU -->|"Scenario 2 — calls phone banking"| BO
-    BO -->|"Manages claims &amp; adjudicates [UI · SSO]"| PLAT
+    subgraph SCHEMES["CARD SCHEMES — external · the ONLY channel between issuer and acquirer"]
+        direction TB
+        VROL["VROL<br/>[External System]<br/>Visa Resolve Online · runs VCR<br/>REST API + bulk file"]
+        MCOM["MCOM<br/>[External System]<br/>Mastercom · runs MDR<br/>REST API + bulk file"]
+    end
 
-    AC -->|"Works the case in the VROL portal [UI]"| VROL
-    AC -->|"Works the case in the Mastercom portal [UI]"| MCOM
-    ME -->|"Most merchants respond via their acquirer"| AC
-    AC -.->|"Deflection &amp; evidence [mTLS]"| PAI
-    ME -.->|"Deflection &amp; evidence [mTLS]"| PAI
+    subgraph ACQSIDE["ACQUIRING SIDE — external · OUT OF OUR INTEGRATION SCOPE"]
+        direction TB
+        ADS["Acquirer Dispute System<br/>[External System]<br/>e.g. Pega Smart Dispute for Acquirers,<br/>or in-house / third-party platform"]
+        ACQ["Acquirer Ops<br/>[Person]"]
+        MER["Merchant<br/>[Person]"]
+    end
 
-    PLAT -->|"Partner case views + webhooks"| PAI
-    PLAT ==>|"Dispute · pre-arb · arbitration<br/>[REST — API only, NO UI]"| VROL
-    PLAT ==>|"Chargeback · 2nd presentment · pre-arb<br/>[REST / SFTP — API only, NO UI]"| MCOM
+    CU -->|"Scenario 1 — raises dispute<br/>via web form"| DRP
+    CU -->|"Scenario 2 — calls<br/>phone banking"| BO
+    BO -->|"Raises &amp; adjudicates cases<br/>[UI · corporate SSO]"| DRP
 
-    PLAT ==>|"Postings"| CBK
-    PLAT ==>|"Fraud assessment"| FRD
-    PLAT ==>|"cardRef → account range"| TV
-    PLAT ==>|"Transaction lookup"| SW
-    PLAT -.->|"Runs on"| CLD
+    DRP ==>|"1 · CALL — we initiate<br/>raise dispute · pre-arb response · arbitration<br/>[REST, per case, on decision]"| VROL
+    VROL ==>|"2 · POLL — we retrieve<br/>dispute response · pre-arb · arbitration · rulings<br/>[scheduled poll, fetch + acknowledge]"| DRP
+    DRP ==>|"1 · CALL — we initiate<br/>chargeback · pre-arb · arbitration<br/>[REST / SFTP, per case]"| MCOM
+    MCOM ==>|"2 · POLL — we retrieve<br/>2nd presentment · pre-arb · rulings<br/>[scheduled poll, fetch + acknowledge]"| DRP
+
+    ADS -.->|"files dispute response,<br/>pre-arbitration, arbitration<br/>THEIR integration — not ours"| VROL
+    ADS -.->|"files 2nd presentment,<br/>pre-arbitration<br/>THEIR integration — not ours"| MCOM
+    ACQ -->|"works the case<br/>[their UI]"| ADS
+    MER -->|"responds via acquirer,<br/>or merchant portal"| ADS
+
+    DRP ==>|"Postings — provisional credit,<br/>final credit, write-off"| CBK
+    DRP ==>|"Fraud assessment"| FRD
+    DRP ==>|"cardRef to account range<br/>[PCI, adapter only]"| TV
+    DRP ==>|"Transaction lookup"| SW
+    DRP -.->|"Runs on"| CLD
 
     classDef person  fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
     classDef inScope fill:#1061B0,color:#FFFFFF,stroke:#0A3D6B,stroke-width:4px
-    classDef ours    fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:2px
     classDef visa    fill:#1A1F71,color:#FFFFFF,stroke:#F7B600,stroke-width:3px
     classDef mcard   fill:#CF0A2C,color:#FFFFFF,stroke:#F79E1B,stroke-width:3px
     classDef ext     fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
-    class CU,BO,AC,ME person
-    class PLAT inScope
-    class PAI ours
+    classDef acq     fill:#6C757D,color:#FFFFFF,stroke:#495057,stroke-width:2px,stroke-dasharray:6 4
+    class CU,BO,ACQ,MER person
+    class DRP inScope
     class VROL visa
     class MCOM mcard
     class CBK,FRD,TV,SW,CLD ext
+    class ADS acq
 
     linkStyle default stroke:#54606C,stroke-width:1.5px

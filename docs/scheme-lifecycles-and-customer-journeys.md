@@ -64,27 +64,27 @@
 flowchart LR
     subgraph ALLOC["VISA · ALLOCATION — 10.x Fraud, 11.x Authorization — 3 stages"]
         direction LR
-        A1["<b>1 · DISPUTE</b><br/>ISSUER files<br/><i>Visa auto-decides validity</i>"]
-        A2["<b>2 · PRE-ARBITRATION</b><br/><b>ACQUIRER</b> files  (30d)<br/>issuer responds  (30d)"]
-        A3["<b>3 · ARBITRATION</b><br/><b>ACQUIRER</b> escalates  (10d)<br/>VISA rules"]
+        A1["1 · DISPUTE<br/>ISSUER files<br/>Visa auto-decides validity"]
+        A2["2 · PRE-ARBITRATION<br/>ACQUIRER files  (30d)<br/>issuer responds  (30d)"]
+        A3["3 · ARBITRATION<br/>ACQUIRER escalates  (10d)<br/>VISA rules"]
         A1 -->|"no Response stage —<br/>a cycle is eliminated"| A2 --> A3
     end
 
     subgraph COLLAB["VISA · COLLABORATION — 12.x Processing, 13.x Consumer — 4 stages"]
         direction LR
-        C1["<b>1 · DISPUTE</b><br/>ISSUER files<br/>with evidence"]
-        C2["<b>2 · DISPUTE RESPONSE</b><br/><b>ACQUIRER</b> responds  (30d)"]
-        C3["<b>3 · PRE-ARBITRATION</b><br/><b>ISSUER</b> files  (30d)<br/>acquirer responds  (30d)"]
-        C4["<b>4 · ARBITRATION</b><br/><b>ISSUER</b> escalates  (10d)<br/>VISA rules"]
+        C1["1 · DISPUTE<br/>ISSUER files<br/>with evidence"]
+        C2["2 · DISPUTE RESPONSE<br/>ACQUIRER responds  (30d)"]
+        C3["3 · PRE-ARBITRATION<br/>ISSUER files  (30d)<br/>acquirer responds  (30d)"]
+        C4["4 · ARBITRATION<br/>ISSUER escalates  (10d)<br/>VISA rules"]
         C1 --> C2 --> C3 --> C4
     end
 
     subgraph MDR["MASTERCARD · MDR — all reason codes — 4 cycles"]
         direction LR
-        M1["<b>1 · FIRST CHARGEBACK</b><br/>ISSUER files"]
-        M2["<b>2 · SECOND PRESENTMENT</b><br/><b>ACQUIRER</b> responds  (45d)"]
-        M3["<b>3 · PRE-ARBITRATION</b><br/><b>ISSUER</b> files"]
-        M4["<b>4 · ARBITRATION</b><br/><b>ISSUER</b> escalates<br/>MASTERCARD rules"]
+        M1["1 · FIRST CHARGEBACK<br/>ISSUER files"]
+        M2["2 · SECOND PRESENTMENT<br/>ACQUIRER responds  (45d)"]
+        M3["3 · PRE-ARBITRATION<br/>ISSUER files"]
+        M4["4 · ARBITRATION<br/>ISSUER escalates<br/>MASTERCARD rules"]
         M1 --> M2 --> M3 --> M4
     end
 
@@ -237,8 +237,8 @@ Before the scheme-specific diagrams, here is the **common skeleton**. Visa and M
 flowchart TB
     subgraph PRE["BEFORE A DISPUTE EXISTS"]
         direction TB
-        S1["<b>1 · PRESENTMENT</b><br/>Acquirer → Network → Issuer<br/>transaction cleared and settled<br/><i>this is where settlementNetwork is set</i>"]
-        S2["<b>2 · PRE-DISPUTE</b>  (optional)<br/>Cardholder contacts issuer · issuer queries merchant<br/>Visa: RDR / Order Insight · MC: Ethoca / Consumer Clarity"]
+        S1["1 · PRESENTMENT<br/>Acquirer → Network → Issuer<br/>transaction cleared and settled<br/>this is where settlementNetwork is set"]
+        S2["2 · PRE-DISPUTE  (optional)<br/>Cardholder contacts issuer · issuer queries merchant<br/>Visa: RDR / Order Insight · MC: Ethoca / Consumer Clarity"]
         S1 --> S2
     end
 
@@ -248,10 +248,10 @@ flowchart TB
 
     subgraph FORMAL["THE FORMAL DISPUTE LIFECYCLE — the 4 stages your SME counts"]
         direction TB
-        S3["<b>3 · DISPUTE / CHARGEBACK</b><br/><b>ISSUER</b> files · funds move acquirer → issuer<br/>Visa: Dispute · MC: First Chargeback"]
-        S4["<b>4 · RESPONSE</b><br/><b>ACQUIRER / MERCHANT</b> defends<br/>Visa: Dispute Response · MC: Second Presentment"]
-        S5["<b>5 · PRE-ARBITRATION</b><br/>initiator varies — see note<br/>last chance to settle bilaterally"]
-        S6["<b>6 · ARBITRATION</b><br/><b>NETWORK</b> rules · binding · loser pays fees"]
+        S3["3 · DISPUTE / CHARGEBACK<br/>ISSUER files · funds move acquirer → issuer<br/>Visa: Dispute · MC: First Chargeback"]
+        S4["4 · RESPONSE<br/>ACQUIRER / MERCHANT defends<br/>Visa: Dispute Response · MC: Second Presentment"]
+        S5["5 · PRE-ARBITRATION<br/>initiator varies — see note<br/>last chance to settle bilaterally"]
+        S6["6 · ARBITRATION<br/>NETWORK rules · binding · loser pays fees"]
         S3 --> Q2{"Acquirer<br/>responds?"}
         Q2 -->|"No / accepts liability"| E2(["ISSUER WINS<br/>chargeback stands"])
         Q2 -->|Defends| S4
@@ -264,7 +264,7 @@ flowchart TB
         S6 --> E5(["NETWORK RULING<br/>binding on both parties"])
     end
 
-    COMP["<b>COMPLIANCE</b>  (independent flow)<br/>Pre-Compliance → Compliance<br/>for rule violations with financial loss<br/>where no chargeback right exists"]
+    COMP["COMPLIANCE  (independent flow)<br/>Pre-Compliance → Compliance<br/>for rule violations with financial loss<br/>where no chargeback right exists"]
     S1 -.->|"no dispute right,<br/>but a rule was broken"| COMP
     COMP -.-> E6(["COMPLIANCE RULING"])
 
@@ -322,7 +322,7 @@ stateDiagram-v2
     state "ALLOCATION — no Dispute Response stage" as AllocPath {
         direction LR
         [*] --> AcqAccepts2: "acquirer accepts<br/>Visa's allocation"
-        [*] --> AcqPreArb: "<b>ACQUIRER</b> initiates<br/>Pre-Arbitration (stage 3)"
+        [*] --> AcqPreArb: "ACQUIRER initiates<br/>Pre-Arbitration (stage 3)"
         AcqAccepts2 --> [*]
         AcqPreArb --> [*]
     }
@@ -343,7 +343,7 @@ stateDiagram-v2
 
     S2 --> IssuerWins: "accepted or no response"
     S2 --> IssuerConcedes: "issuer accepts<br/>the evidence"
-    S2 --> S3: "<b>ISSUER</b> initiates<br/>Pre-Arbitration"
+    S2 --> S3: "ISSUER initiates<br/>Pre-Arbitration"
 
     state "PRE-ARBITRATION — stage 3 Collab / stage 2 Alloc" as S3 {
         direction LR

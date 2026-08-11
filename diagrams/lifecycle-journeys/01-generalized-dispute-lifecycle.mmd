@@ -1,8 +1,8 @@
 flowchart TB
     subgraph PRE["BEFORE A DISPUTE EXISTS"]
         direction TB
-        S1["<b>1 · PRESENTMENT</b><br/>Acquirer → Network → Issuer<br/>transaction cleared and settled<br/><i>this is where settlementNetwork is set</i>"]
-        S2["<b>2 · PRE-DISPUTE</b>  (optional)<br/>Cardholder contacts issuer · issuer queries merchant<br/>Visa: RDR / Order Insight · MC: Ethoca / Consumer Clarity"]
+        S1["1 · PRESENTMENT<br/>Acquirer → Network → Issuer<br/>transaction cleared and settled<br/>this is where settlementNetwork is set"]
+        S2["2 · PRE-DISPUTE  (optional)<br/>Cardholder contacts issuer · issuer queries merchant<br/>Visa: RDR / Order Insight · MC: Ethoca / Consumer Clarity"]
         S1 --> S2
     end
 
@@ -12,10 +12,10 @@ flowchart TB
 
     subgraph FORMAL["THE FORMAL DISPUTE LIFECYCLE — the 4 stages your SME counts"]
         direction TB
-        S3["<b>3 · DISPUTE / CHARGEBACK</b><br/><b>ISSUER</b> files · funds move acquirer → issuer<br/>Visa: Dispute · MC: First Chargeback"]
-        S4["<b>4 · RESPONSE</b><br/><b>ACQUIRER / MERCHANT</b> defends<br/>Visa: Dispute Response · MC: Second Presentment"]
-        S5["<b>5 · PRE-ARBITRATION</b><br/>initiator varies — see note<br/>last chance to settle bilaterally"]
-        S6["<b>6 · ARBITRATION</b><br/><b>NETWORK</b> rules · binding · loser pays fees"]
+        S3["3 · DISPUTE / CHARGEBACK<br/>ISSUER files · funds move acquirer → issuer<br/>Visa: Dispute · MC: First Chargeback"]
+        S4["4 · RESPONSE<br/>ACQUIRER / MERCHANT defends<br/>Visa: Dispute Response · MC: Second Presentment"]
+        S5["5 · PRE-ARBITRATION<br/>initiator varies — see note<br/>last chance to settle bilaterally"]
+        S6["6 · ARBITRATION<br/>NETWORK rules · binding · loser pays fees"]
         S3 --> Q2{"Acquirer<br/>responds?"}
         Q2 -->|"No / accepts liability"| E2(["ISSUER WINS<br/>chargeback stands"])
         Q2 -->|Defends| S4
@@ -28,7 +28,7 @@ flowchart TB
         S6 --> E5(["NETWORK RULING<br/>binding on both parties"])
     end
 
-    COMP["<b>COMPLIANCE</b>  (independent flow)<br/>Pre-Compliance → Compliance<br/>for rule violations with financial loss<br/>where no chargeback right exists"]
+    COMP["COMPLIANCE  (independent flow)<br/>Pre-Compliance → Compliance<br/>for rule violations with financial loss<br/>where no chargeback right exists"]
     S1 -.->|"no dispute right,<br/>but a rule was broken"| COMP
     COMP -.-> E6(["COMPLIANCE RULING"])
 

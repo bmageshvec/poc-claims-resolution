@@ -1,21 +1,32 @@
 stateDiagram-v2
     direction TB
-    [*] --> ClaimSubmitted
-    ClaimSubmitted --> ClaimAccepted: validation + dedup pass
-    ClaimSubmitted --> ClaimRejected: duplicate / not entitled
+    [*] --> ComplaintReceived: unauthenticated intake
+    [*] --> ClaimSubmitted: identified intake
+    ComplaintReceived --> ClaimSubmitted: identity resolved
+    ComplaintReceived --> ComplaintDiscarded: cannot identify
+    ClaimSubmitted --> ClaimAccepted: validation and dedup pass
+    ClaimSubmitted --> ClaimRejected: duplicate or not entitled
     ClaimAccepted --> CaseOpened
     CaseOpened --> EligibilityAssessed
-    EligibilityAssessed --> ProvisionalCreditIssued: Reg E eligible
-    EligibilityAssessed --> CaseDeniedNoRight: no chargeback right
-    ProvisionalCreditIssued --> EvidenceRequested
-    EvidenceRequested --> EvidenceBundled
+    EligibilityAssessed --> DeflectionOffered: pre-dispute channel available
+    EligibilityAssessed --> CaseDeniedNoRight: no right or time bar expired
+    EligibilityAssessed --> ProvisionalCreditIssued: right confirmed
+    DeflectionOffered --> DeflectionAccepted: merchant refunds
+    DeflectionOffered --> ProvisionalCreditIssued: declined or lapsed
+    ProvisionalCreditIssued --> EvidenceBundled
     EvidenceBundled --> NetworkSubmissionQueued
     NetworkSubmissionQueued --> NetworkMessageSent
     NetworkMessageSent --> NetworkResponseReceived
-    NetworkResponseReceived --> CaseDecided: accepted / represented
+    NetworkResponseReceived --> CaseDecided: accepted or conceded
     NetworkResponseReceived --> NetworkSubmissionQueued: escalate cycle
+    NetworkResponseReceived --> NetworkRulingReceived: scheme ruled
+    NetworkRulingReceived --> AppealFiled: at or above threshold
+    NetworkRulingReceived --> CaseDecided
+    AppealFiled --> CaseDecided: final ruling
     CaseDecided --> PostingCompleted
     PostingCompleted --> CaseClosed
     CaseDeniedNoRight --> CaseClosed
+    DeflectionAccepted --> CaseClosed
     ClaimRejected --> [*]
+    ComplaintDiscarded --> [*]
     CaseClosed --> [*]

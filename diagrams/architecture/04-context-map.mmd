@@ -1,35 +1,33 @@
 flowchart TB
-    subgraph EXP["Experience Layer"]
-        CBFF["Customer BFF"]
-        OBFF["Issuer-Ops BFF"]
-        PBFF["Partner BFF / PAI Gateway"]
+    subgraph EXP["Experience layer"]
+        direction LR
+        CBFF["Customer experience<br/>+ backend-for-frontend"]
+        OBFF["Issuer-Ops experience<br/>+ backend-for-frontend"]
+        PBFF["Partner gateway<br/>optional"]
     end
-
-    CI["<b>BC-1 Claim Intake</b><br/>Core"]
-    DC["<b>BC-2 Dispute Case Mgmt</b><br/>Core / Orchestrator"]
-    RU["<b>BC-3 Eligibility &amp; Rules</b><br/>Core"]
-    NX["<b>BC-4 Network Exchange</b><br/>Core"]
-    FP["<b>BC-5 Financial Posting</b><br/>Supporting"]
-    EV["<b>BC-6 Evidence</b><br/>Supporting"]
-    CT["<b>BC-7 Compliance &amp; Timers</b><br/>Supporting"]
-    WA["<b>BC-8 Work Assignment</b><br/>Supporting"]
-    PA["<b>BC-9 PAI</b><br/>Supporting / OHS"]
-    CO["<b>BC-10 Correspondence</b><br/>Supporting"]
-
-    CUST["Customer/Account/Card<br/>(Core Banking)"]
-    TXN["Transaction Retrieval<br/>(Switch/Settlement)"]
-    FRD["Fraud &amp; Risk"]
-    VAULT["Token Vault (PCI)"]
+    CI["BC-1 Claim Intake<br/>Core"]
+    DC["BC-2 Dispute Case Mgmt<br/>Core · orchestrator"]
+    RU["BC-3 Eligibility and Rules<br/>Core"]
+    NX["BC-4 Network Exchange<br/>Core"]
+    REC["BC-17 Reconciliation<br/>and Assurance"]
+    FP["BC-5 Financial Posting"]
+    EV["BC-6 Evidence"]
+    CT["BC-7 Compliance and Timers"]
+    WA["BC-8 Work Assignment"]
+    PA["BC-9 Partner Integration"]
+    CO["BC-10 Correspondence"]
+    CUST["Customer / Account / Card"]
+    TXN["Transaction Retrieval"]
+    FRD["Fraud and Risk"]
+    VAULT["Token Vault"]
     LDGR["Core Banking Ledger"]
-    MCOM["MCOM / Mastercom"]
-    VROL["VROL (Visa)"]
-    RPT["Reporting / Audit"]
+    SCHEME["VROL / MCOM<br/>card schemes"]
+    RPT["Reporting and Audit"]
 
     CBFF -->|"CS"| CI
     OBFF -->|"CS"| DC
     PBFF -->|"CS"| PA
-
-    CI -->|"CS: ClaimAccepted"| DC
+    CI -->|"CS · ClaimAccepted"| DC
     DC -->|"CS + ACL"| RU
     DC -->|"CS"| NX
     DC -->|"CS"| FP
@@ -38,25 +36,28 @@ flowchart TB
     DC -->|"CS"| WA
     DC -->|"CS"| CO
     PA -->|"Partnership"| DC
-    PA -->|"CS"| EV
     NX -->|"CS"| EV
-
     CI -.->|"ACL"| CUST
     CI -.->|"ACL"| TXN
     DC -.->|"ACL"| FRD
-    NX -.->|"ACL"| VAULT
-    FP -.->|"ACL + Customer/Supplier<br/>(we are downstream)"| LDGR
-    NX ==>|"<b>Conformist + ACL</b>"| MCOM
-    NX ==>|"<b>Conformist + ACL</b>"| VROL
-    DC -.->|"Published Language<br/>(event stream)"| RPT
+    NX -.->|"ACL · PCI boundary"| VAULT
+    FP -.->|"ACL · we are downstream"| LDGR
+    NX ==>|"Conformist + ACL"| SCHEME
+    REC ==>|"Conformist + ACL<br/>independent query path"| SCHEME
+    REC -.->|"reads case state · never writes"| DC
+    REC ==>|"DivergenceDetected"| WA
+    DC -.->|"Published Language"| RPT
 
-    classDef core fill:#0d3b66,color:#fff,stroke:#0d3b66,stroke-width:2px
-    classDef sup fill:#457b9d,color:#fff
-    classDef ext fill:#adb5bd,color:#000
-    classDef net fill:#f4a261,color:#000,stroke:#e76f51,stroke-width:2px
-    classDef exp fill:#a8dadc,color:#000
+    classDef core fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef sup fill:#457B9D,color:#FFFFFF,stroke:#1D3557,stroke-width:2px
+    classDef newbc fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:3px
+    classDef ext fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
+    classDef scheme fill:#F4A261,color:#000000,stroke:#C1440E,stroke-width:2px
+    classDef exp fill:#A8DADC,color:#000000,stroke:#457B9D,stroke-width:2px
     class CI,DC,RU,NX core
     class FP,EV,CT,WA,PA,CO sup
+    class REC newbc
     class CUST,TXN,FRD,VAULT,LDGR,RPT ext
-    class MCOM,VROL net
+    class SCHEME scheme
     class CBFF,OBFF,PBFF exp
+    linkStyle default stroke:#54606C,stroke-width:1.5px

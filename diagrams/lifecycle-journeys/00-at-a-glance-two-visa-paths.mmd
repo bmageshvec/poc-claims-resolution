@@ -1,27 +1,27 @@
 flowchart LR
     subgraph ALLOC["VISA · ALLOCATION — 10.x Fraud, 11.x Authorization — 3 stages"]
         direction LR
-        A1["<b>1 · DISPUTE</b><br/>ISSUER files<br/><i>Visa auto-decides validity</i>"]
-        A2["<b>2 · PRE-ARBITRATION</b><br/><b>ACQUIRER</b> files  (30d)<br/>issuer responds  (30d)"]
-        A3["<b>3 · ARBITRATION</b><br/><b>ACQUIRER</b> escalates  (10d)<br/>VISA rules"]
+        A1["1 · DISPUTE<br/>ISSUER files<br/>Visa auto-decides validity"]
+        A2["2 · PRE-ARBITRATION<br/>ACQUIRER files  (30d)<br/>issuer responds  (30d)"]
+        A3["3 · ARBITRATION<br/>ACQUIRER escalates  (10d)<br/>VISA rules"]
         A1 -->|"no Response stage —<br/>a cycle is eliminated"| A2 --> A3
     end
 
     subgraph COLLAB["VISA · COLLABORATION — 12.x Processing, 13.x Consumer — 4 stages"]
         direction LR
-        C1["<b>1 · DISPUTE</b><br/>ISSUER files<br/>with evidence"]
-        C2["<b>2 · DISPUTE RESPONSE</b><br/><b>ACQUIRER</b> responds  (30d)"]
-        C3["<b>3 · PRE-ARBITRATION</b><br/><b>ISSUER</b> files  (30d)<br/>acquirer responds  (30d)"]
-        C4["<b>4 · ARBITRATION</b><br/><b>ISSUER</b> escalates  (10d)<br/>VISA rules"]
+        C1["1 · DISPUTE<br/>ISSUER files<br/>with evidence"]
+        C2["2 · DISPUTE RESPONSE<br/>ACQUIRER responds  (30d)"]
+        C3["3 · PRE-ARBITRATION<br/>ISSUER files  (30d)<br/>acquirer responds  (30d)"]
+        C4["4 · ARBITRATION<br/>ISSUER escalates  (10d)<br/>VISA rules"]
         C1 --> C2 --> C3 --> C4
     end
 
     subgraph MDR["MASTERCARD · MDR — all reason codes — 4 cycles"]
         direction LR
-        M1["<b>1 · FIRST CHARGEBACK</b><br/>ISSUER files"]
-        M2["<b>2 · SECOND PRESENTMENT</b><br/><b>ACQUIRER</b> responds  (45d)"]
-        M3["<b>3 · PRE-ARBITRATION</b><br/><b>ISSUER</b> files"]
-        M4["<b>4 · ARBITRATION</b><br/><b>ISSUER</b> escalates<br/>MASTERCARD rules"]
+        M1["1 · FIRST CHARGEBACK<br/>ISSUER files"]
+        M2["2 · SECOND PRESENTMENT<br/>ACQUIRER responds  (45d)"]
+        M3["3 · PRE-ARBITRATION<br/>ISSUER files"]
+        M4["4 · ARBITRATION<br/>ISSUER escalates<br/>MASTERCARD rules"]
         M1 --> M2 --> M3 --> M4
     end
 

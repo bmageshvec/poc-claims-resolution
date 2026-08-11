@@ -425,7 +425,7 @@ erDiagram
 ```mermaid
 erDiagram
     pc_data_customer {
-        varchar   pzInsKey            PK "PEGAFS-DATA-PARTY-CUSTOMER <id>"
+        varchar   pzInsKey            PK "PEGAFS-DATA-PARTY-CUSTOMER id"
         varchar   pxObjClass             "PegaFS-Data-Party-Customer"
         varchar   pyCustomerID        UK "CIF customer number"
         varchar   pyFullName
@@ -514,7 +514,7 @@ erDiagram
     }
 
     pc_work_dispute {
-        varchar   pzInsKey            PK "PEGACS-WORK-DISPUTE CLM-<n>"
+        varchar   pzInsKey            PK "PEGACS-WORK-DISPUTE CLM-nnn"
         varchar   pxObjClass             "PegaCS-Work-Dispute"
         varchar   pyID                UK "CLM-2026-0000481922"
         varchar   pyStatusWork           "New / Open / Pending / Resolved-*"
@@ -538,7 +538,7 @@ erDiagram
     }
 
     pc_work_dispute_txn {
-        varchar   pzInsKey            PK "PEGACS-WORK-DISPUTE-TXN DTX-<n>"
+        varchar   pzInsKey            PK "PEGACS-WORK-DISPUTE-TXN DTX-nnn"
         varchar   pxObjClass             "PegaCS-Work-Dispute-Txn"
         varchar   pyID                UK "DTX-2026-0000481922"
         varchar   pxCoverInsKey       FK "-> pc_work_dispute (case containment)"
@@ -713,7 +713,7 @@ erDiagram
     }
 
     pc_data_networkmessage {
-        varchar   pzInsKey            PK "PEGACS-DATA-NETWORKMESSAGE NM-<n>"
+        varchar   pzInsKey            PK "PEGACS-DATA-NETWORKMESSAGE NM-nnn"
         varchar   pxObjClass             "PegaCS-Data-NetworkMessage"
         varchar   pyNetworkMessageID  UK
         varchar   pyCycleInsKey       FK "-> pc_work_dispute_cycle"
@@ -930,7 +930,7 @@ erDiagram
     }
 
     pc_assign_worklist {
-        varchar   pzInsKey            PK "ASSIGN-WORKLIST <handle>"
+        varchar   pzInsKey            PK "ASSIGN-WORKLIST handle"
         varchar   pxObjClass             "Assign-Worklist"
         varchar   pxRefObjectInsKey   FK "-> pc_work_dispute_txn.pzInsKey"
         varchar   pxRefObjectKey         "denormalised work ID"
@@ -1247,7 +1247,7 @@ Each row maps a **physical schema fact** to the architecture decision that remov
 
 ## 12. Table → target bounded context mapping
 
-The migration view. Contexts are as defined in [architecture §3.2](./dispute-claims-resolution-architecture.md#32-bounded-context-definitions).
+The migration view. Contexts are as defined in [architecture §3.2](./dispute-claims-resolution-architecture.md#32-bounded-context-index).
 
 | Target context | Owns (from this schema) | New datastore | Migration note |
 |---|---|---|---|

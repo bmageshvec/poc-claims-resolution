@@ -3,7 +3,7 @@ flowchart LR
         A["Web / mobile apps"]
         B["BFFs"]
         C["claim-intake, dispute-case,<br/>rules, evidence, posting,<br/>timers, work, correspondence"]
-        D["Event backbone (MSK)<br/>schema rule: no PAN field"]
+        D["Event backbone (the event backbone)<br/>schema rule: no PAN field"]
     end
     subgraph IN["PCI CDE — minimised"]
         E["scheme-resolution-svc<br/>(account range only, in-memory)"]

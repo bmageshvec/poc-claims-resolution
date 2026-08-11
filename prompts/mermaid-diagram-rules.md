@@ -45,6 +45,7 @@ Choose by **what the reader needs to understand**, not by what's easiest to draw
 
 - **Node labels: ≤ 6 words.** Longer detail goes in an adjacent table.
 - Use `<br/>` for deliberate line breaks. Never rely on auto-wrap.
+- **No `<b>` or `<i>`** — see §6 rule 9. For emphasis, put the key text on its **first line** or use CAPITALS. Structure carries emphasis; markup does not.
 - Put the **type** on its own line when it aids reading: `Name<br/>[External System]<br/>short description`.
 - Every edge that isn't self-evident gets a label. Every edge in an `erDiagram` **must** have one — it's a syntax requirement.
 - Edge labels: ≤ 8 words. If longer, number the edge and explain in a table.
@@ -127,11 +128,15 @@ These are the ways Mermaid actually breaks. **Verified on 10.9.8.**
 | 6 | **`sequenceDiagram` does not support `classDef`** | `classDef` in a sequence diagram | Use `box <colour> <name> … end` to group participants |
 | 7 | **Every `erDiagram` relationship needs a label** | `A \|\|--o{ B` | `A \|\|--o{ B : "has"` |
 | 8 | Use HTML entities for reserved characters | a bare `#` | `#35;` · `#quot;` for `"` |
+| 9 | **Do not use `<b>` or `<i>` for emphasis.** They *parse* fine but only render where `htmlLabels` is enabled — on GitHub, in many Confluence versions and in draw.io's Mermaid import they appear **literally as `<b>…</b>`** | `A["<b>Name</b><br/>detail"]` | `A["Name<br/>detail"]` — put the emphasised text on its own first line, or use CAPITALS |
 
-**These are safe** — all verified to parse:
+> **Rule 9 is the one that bites in review.** Parsing is not rendering. `mermaid.parse()` accepts these tags happily; the reader then sees raw markup in the box. Only `<br/>` is portable — it is required for line breaks and is honoured everywhere.
+
+**These are safe** — all verified to parse **and** render portably:
 
 - `&`, `·`, `—`, `≤`, `→` and other Unicode, both bare and quoted
-- `<b>`, `<i>`, `<br/>` inside quoted labels
+- **`<br/>`** inside quoted labels — the only HTML tag you should use
+- `<<interface>>`, `<<abstract>>` stereotypes in `classDiagram` — these are Mermaid syntax, not HTML
 - Commas, colons and semicolons inside quoted labels
 - `%%` comment lines
 - `%%{init: {'flowchart': {'curve': 'linear'}} }%%` config directives, as the **first line**
@@ -198,6 +203,7 @@ Do not return a diagram until all of these hold:
 - [ ] Every label with `()` is quoted
 - [ ] Every `erDiagram` relationship has a label; every entity name is ≥ 2 characters
 - [ ] No `classDef` inside `erDiagram` or `sequenceDiagram`
+- [ ] **No `<b>` or `<i>` anywhere** — only `<br/>`
 - [ ] Direction is explicit
 - [ ] A legend exists if line style or colour carries meaning
 - [ ] No edge crosses a node where a different route was available

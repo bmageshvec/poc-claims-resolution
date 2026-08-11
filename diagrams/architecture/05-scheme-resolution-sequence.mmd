@@ -5,7 +5,7 @@ sequenceDiagram
     participant CI as Claim Intake Svc
     participant TX as Transaction Retrieval Svc
     participant SR as Scheme Resolution Svc
-    participant BIN as BIN Range Store<br/>(DynamoDB, weekly refresh)
+    participant BIN as BIN Range Store<br/>(effective-dated, weekly refresh)
     participant TV as Token Vault (PCI)
     participant DC as Dispute Case Svc
     participant NR as Network Router

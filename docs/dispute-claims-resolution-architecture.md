@@ -1,29 +1,51 @@
-# Dispute Claims Resolution Platform — E2E Target Architecture
+# Dispute Claims Resolution Platform — Target Solution Architecture
 
-**From Pega OOTB Smart Dispute (monolith) → Domain-Driven Microservices on AWS**
-Scope: Card + e-commerce disputes — **Mastercard** first (via the MCOM platform), **Visa** next (via VROL).
-Personas: Customer, Issuer (direct users) · Acquirer, Merchant (indirect, via PAI).
+**From Pega OOTB Smart Dispute (monolith) → a domain-driven, capability-based platform**
+Scope: card and e-commerce disputes — **Mastercard** (via the MCOM platform) and **Visa** (via VROL).
+Personas: Cardholder and Issuer BackOffice Team are direct users. Acquirer and Merchant are **not** users of this platform.
 
-> **New to this domain? Start at [§0 Terminology](#0-terminology--read-this-first)** — it is the shared vocabulary for all three documents in this workspace, and it disambiguates the terms that mean two different things depending on which scheme you are reading about.
+> **New to this domain? Start at [§0 Terminology](#0-terminology--read-this-first)** — the shared vocabulary for all documents in this workspace.
+
+---
+
+## How to read this document
+
+**This is a solution architecture, not an implementation plan.** Two rules govern it:
+
+| Rule | What it means |
+|---|---|
+| **Technology-agnostic by default** | Parts 0–11 describe **capabilities and qualities** — "a durable queue with ordered per-key delivery", not a product name. Any vendor could satisfy them |
+| **Products named in exactly one place** | [Part 12 · Technology realisation](#12-technology-realisation) is the only section that names products, and every choice there is explicitly replaceable |
+
+**Completeness over phasing.** This document describes the **full target capability set**, including capabilities most programmes defer — reconciliation, appeal handling, deflection, compliance filing, fund-position tracking, FX. Sequencing is a separate decision; see [Part 13](#13-migration-roadmap). Nothing here is scoped out because it might not make a first release.
+
+**Companion documents**
+
+| Doc | Covers |
+|---|---|
+| [`scheme-lifecycles-and-customer-journeys.md`](./scheme-lifecycles-and-customer-journeys.md) | The Visa and Mastercard lifecycles, validated against both schemes' own publications, with four worked journeys |
+| [`pega-smart-dispute-product-flow.md`](./pega-smart-dispute-product-flow.md) | The AS-IS flow as Pega documents it, and the seven gaps it exposed |
+| [`pega-lite-db-schema.md`](./pega-lite-db-schema.md) | The AS-IS physical data model and its migration mapping |
 
 ---
 
 ## Table of Contents
 
 0. [**Terminology — read this first**](#0-terminology--read-this-first)
-1. [Executive summary & key decisions](#1-executive-summary--key-decisions)
-2. [Part A — Reverse-engineering Pega OOTB Smart Dispute](#2-part-a--reverse-engineering-pega-ootb-smart-dispute)
-3. [Part B — Domain-Driven Design: subdomains & bounded contexts](#3-part-b--domain-driven-design-subdomains--bounded-contexts)
-4. [Part C — Context map & integration patterns](#4-part-c--context-map--integration-patterns)
-5. [Part D — The BIN routing decision (FE vs BE)](#5-part-d--the-bin-routing-decision-fe-vs-be)
-6. [Part E — Microservice catalog](#6-part-e--microservice-catalog)
-7. [Part F — C4 model (L1 / L2 / L3)](#7-part-f--c4-model-l1--l2--l3)
-8. [Part G — Persona journeys & the PAI](#8-part-g--persona-journeys--the-pai-partner-api-interface)
-9. [Part H — Network integration: MCOM & VROL](#9-part-h--network-integration-mcom--vrol)
-10. [Part I — AWS deployment architecture](#10-part-i--aws-deployment-architecture)
-11. [Part J — Cross-cutting concerns & NFRs](#11-part-j--cross-cutting-concerns--nfrs)
-12. [Part K — Strangler-fig migration roadmap](#12-part-k--strangler-fig-migration-roadmap)
-13. [Appendix — Decision log (ADR summary)](#13-appendix--decision-log-adr-summary)
+1. [Executive summary & architectural decisions](#1-executive-summary--architectural-decisions)
+2. [AS-IS — reverse-engineering Pega Smart Dispute](#2-as-is--reverse-engineering-pega-smart-dispute)
+3. [Domain model — subdomains & bounded contexts](#3-domain-model--subdomains--bounded-contexts)
+4. [Context map & integration patterns](#4-context-map--integration-patterns)
+5. [Scheme resolution — where the routing decision lives](#5-scheme-resolution--where-the-routing-decision-lives)
+6. [Capability catalog](#6-capability-catalog)
+7. [C4 model — L1 / L2 / L3](#7-c4-model--l1--l2--l3)
+8. [**Scheme integration — the four flows**](#8-scheme-integration--the-four-flows)
+9. [**Reconciliation & assurance**](#9-reconciliation--assurance)
+10. [Personas, journeys & partner access](#10-personas-journeys--partner-access)
+11. [Cross-cutting concerns & NFRs](#11-cross-cutting-concerns--nfrs)
+12. [**Technology realisation** — the only section naming products](#12-technology-realisation)
+13. [Migration roadmap](#13-migration-roadmap)
+14. [Decision log](#14-decision-log)
 
 ---
 
@@ -54,7 +76,7 @@ Read as a sentence: *"Under **VCR**, an issuer files a **Visa** dispute through 
 | Scheme-specific correlation tables | `pc_data_mcom_case`, `pc_data_vrol_case` | — |
 | Ruleset versions | `MDR-2026.1`, `VCR-2026.1` | — |
 
-**Why the canonical value is the scheme, not the platform:** the field feeds two consumers. `network-router-svc` needs to know *where to send it* (platform), but `dispute-rules-svc` needs to know *which rulebook applies* (scheme). Only the scheme value works for both — reason code 4837 belongs to Mastercard's rulebook, not to Mastercom the software. The platform is derivable from the scheme via router config, so putting it in the message would duplicate a fact the router already owns. See [ADR-002](#13-appendix--decision-log-adr-summary) and §5.
+**Why the canonical value is the scheme, not the platform:** the field feeds two consumers. the network-routing capability needs to know *where to send it* (platform), but the rules capability needs to know *which rulebook applies* (scheme). Only the scheme value works for both — reason code 4837 belongs to Mastercard's rulebook, not to Mastercom the software. The platform is derivable from the scheme via router config, so putting it in the message would duplicate a fact the router already owns. See [ADR-002](#14-decision-log) and §5.
 
 ### 0.2 ⚠ Terms that mean different things depending on who is speaking
 
@@ -224,34 +246,52 @@ Table and column prefixes — `pc_`, `pr_`, `pr4_`, `px`, `py`, `pz` — are cov
 
 ---
 
-## 1. Executive summary & key decisions
+## 1. Executive summary & architectural decisions
 
-Pega Smart Dispute packages five things into one deployable: (a) the **dispute case lifecycle**, (b) the **network rules engine** (reason codes, time bars, chargeback rights), (c) **financial posting** (provisional credit, write-off, recovery), (d) **network connectivity** (Mastercom/VROL adapters), and (e) the **agent + customer UI**. That bundling is exactly what makes it hard to change: a Mastercard release note forces a full platform regression, and a UI tweak forces a case-engine deploy.
+Pega Smart Dispute packages six things into one deployable: the **dispute case lifecycle**, the **network rules engine**, **financial posting**, **scheme connectivity**, the **agent and customer UI**, and the **background processing** that drives all of it. That bundling is what makes it hard to change — a Mastercard release note forces a full platform regression, and a UI tweak forces a case-engine deploy.
 
-The target architecture splits those five along **domain seams, not technical layers**.
+The target architecture splits those along **domain seams, not technical layers**.
 
-### The ten decisions that shape everything else
+### 1.1 The one-paragraph description
+
+A cardholder raises a claim — self-service or through the contact centre. **Claim Intake** establishes identity, deduplicates, and produces a validated `Claim`. **Dispute Case Management** opens one `DisputeCase` per disputed transaction and orchestrates its lifecycle. **Scheme Resolution** determines the card network server-side from the settlement record. **Eligibility & Rules** answers whether a dispute right exists, under which reason code, within which time bar, requiring which evidence. **Financial Posting** issues provisional credit under regulatory timers held by **Compliance & Timers** — independently of the network. **Evidence** assembles and redacts scheme-compliant bundles. **Network Exchange** conducts the conversation with the scheme across four distinct flows — file, poll, fan-out, reconcile. **Reconciliation & Assurance** independently proves our view of every open case matches the scheme's. Everything emits to an **event backbone** feeding read models and an immutable audit store.
+
+### 1.2 The fifteen decisions that shape everything else
 
 | # | Decision | Choice | Rationale |
 |---|---|---|---|
-| D1 | Where does card-network routing (VROL vs MCOM) live? | **Backend.** A `Scheme Resolution Service` owns it. The FE never sees a PAN or a network name. | PCI scope, BIN-table volatility, co-badged cards, multi-channel consistency. See [Part D](#5-part-d--the-bin-routing-decision-fe-vs-be). |
-| D2 | Case orchestration style | **Orchestrated saga** (AWS Step Functions) for the dispute lifecycle; choreographed events for side effects | The dispute lifecycle is a long-running, regulator-auditable, compensating process. Choreography alone makes the state unauditable. |
-| D3 | Network adapters | One **microservice per scheme** (`mcom-adapter`, `vrol-adapter`) behind a **Published Language** (canonical `DisputeCaseEvent`) | Scheme release cycles are independent (MC twice a year, Visa twice a year, misaligned). |
-| D4 | Relationship to the networks | **Conformist + ACL.** We conform to their wire model, but never let it leak inside. | We have zero negotiating power over Mastercom/VROL schemas. |
-| D5 | Merchant & Acquirer access | **Primary path is the scheme's own portal** (VROL / Mastercom), which relays to us machine-to-machine. **PAI** is a *secondary* deflection & evidence channel — an Open Host Service with mTLS + OAuth2. No partner ever gets a UI in our platform. | The scheme rails are how disputes actually reach acquirers; PAI adds pre-emptive resolution on top. See [§7.1](#71-level-1--system-context). |
-| D6 | Front end | Decompose the Pega monolith UI into **3 experience apps + 3 BFFs** (Customer BFF, Issuer-Ops BFF, Partner BFF) | Personas have irreconcilable UX and auth models. |
-| D7 | Data | **Database per service**, Aurora PostgreSQL for transactional contexts, DynamoDB for high-volume append-only (BIN cache, idempotency, network journals), S3 for evidence | Removes the Pega single-schema coupling. |
-| D8 | Rules | Externalize Pega decision tables into a **Dispute Rules Service** (DMN / Drools or Camunda DMN) with versioned, effective-dated rulesets | Network rule changes become data deployments, not code deployments. |
-| D9 | Money movement | **Ledger-adjacent, not ledger-owning.** A `Financial Posting Service` issues commands to core banking; it never holds balances. | Keeps the dispute platform out of the system-of-record for money. |
-| D10 | Migration | **Strangler fig** by case type, Mastercard-fraud-first | Lowest-risk first slice with real volume. |
+| **D1** | Where scheme routing lives | **Backend.** A Scheme Resolution capability owns it. The front end never sees a PAN, a BIN, or a routing decision it can act on | PCI scope, BIN-table volatility, co-badged cards, multi-channel consistency. [§5](#5-scheme-resolution--where-the-routing-decision-lives) |
+| **D2** | Case orchestration style | **Orchestrated saga** for the lifecycle; choreographed events for side effects | The lifecycle is long-running, regulator-auditable and compensating. Choreography alone makes the state unauditable |
+| **D3** | Scheme adapters | **One deployable per scheme**, behind a canonical published language | Scheme release and certification cycles are independent and misaligned |
+| **D4** | Relationship to the schemes | **Conformist + anti-corruption layer.** We conform on the wire; no scheme type reaches the domain | We have zero negotiating power over the scheme contracts |
+| **D5** | Merchant & acquirer access | **They are not users of this platform.** They work disputes in their own systems against the scheme. A partner API exists only as an *optional* deflection channel | The scheme rails are how disputes actually reach acquirers. [§7.1](#71-level-1--system-context), [§10](#10-personas-journeys--partner-access) |
+| **D6** | Front end | Decompose the monolith UI into experience apps per persona, each with its own backend-for-frontend | Personas have irreconcilable UX and authentication models |
+| **D7** | Data ownership | **Store per capability.** No shared schema. Transactional stores for case state, append-only stores for high-volume journals, object storage for evidence | Removes the single-schema coupling that defines the Pega failure mode |
+| **D8** | Rules | Externalised, **versioned and effective-dated** decision model | A scheme release becomes a data deployment, not a code deployment |
+| **D9** | Money movement | **Ledger-adjacent, not ledger-owning.** Posting instructions are issued to core banking; balances are never held here | Keeps the platform out of the system of record for money |
+| **D10** | Migration | **Strangler fig** by case type | Lowest-risk first slice with real volume |
+| **D11** | **Inbound integrity** | **Persist → commit → acknowledge, in that order.** Never acknowledge to a scheme before the local commit | Acknowledging first discards the message permanently on failure. On Visa, silence is acceptance of liability. [§8.3](#83-flow-2--poll--we-retrieve) |
+| **D12** | **Reconciliation** | A **separate bounded context** that independently compares our state to the scheme's, and **never mutates a case** | It is the only capability allowed to distrust every other one. Auto-fixing would hide the defect. [§9](#9-reconciliation--assurance) |
+| **D13** | **Raw scheme payloads** | **Never leave the adapter.** The journal sits inside the anti-corruption boundary; only canonical events cross it | A shared raw-message store would put scheme vocabulary outside the ACL — the exact failure D4 prevents |
+| **D14** | **Filing party** | `NetworkExchange` carries an explicit **`initiatingParty`** | The **acquirer** files pre-arbitration in Visa Allocation. Inferring the filer from cycle type is wrong on roughly half of Visa volume |
+| **D15** | **Cycle vocabulary** | `DisputeCycle` includes `DEFLECTION` and `APPEAL`; **Compliance is a sibling flow, not a cycle** | Deflection has nowhere to live today, appeal is a real post-arbitration stage (≥ USD 5,000), and compliance has independent entry conditions |
 
-### One-paragraph target-state description
+**D11 to D15 are new.** They come from validating the model against Visa's VCR guide, Mastercard's Mastercom documentation and Pega's own product material — findings that had no home in the previous design.
 
-A customer raises a claim in digital banking; the **Claim Intake** context creates a `Claim` aggregate and the **Dispute Case** context opens a `DisputeCase` per disputed transaction. **Scheme Resolution** resolves the network from the card's BIN (server-side, from a token, never from a PAN sent by the browser). **Eligibility & Rules** determines chargeback rights, reason code and time bars for that scheme. **Financial Posting** issues provisional credit under Reg E timers held by **Compliance & Timers**. When the case is ready to go to the network, the **Network Exchange** context routes the canonical event to `mcom-adapter` or `vrol-adapter`, which translates to Mastercom / VROL wire format via an anti-corruption layer. Merchant and acquirer responses (representment / second presentment, pre-arbitration, arbitration) arrive back through the same adapters, or through **PAI** if the acquirer/merchant engages directly. **Evidence** holds documents in S3 with a network-facing manifest. Everything emits to an **Event Backbone** (MSK) feeding **Reporting & Analytics** and an immutable **Audit** store.
+### 1.3 Patterns explicitly rejected
+
+| Pattern | Where it was tempting | Why rejected |
+|---|---|---|
+| **Shared kernel** between Dispute Case and Rules | "Just share the ReasonCode enum" | Recreates the Pega coupling in miniature. Reason codes are *scheme* vocabulary — they belong to Rules and arrive as validated opaque values |
+| **A single "network service"** | One integration component for both schemes | Couples two independent release trains. Visa's Allocation workflow has no Mastercard analogue |
+| **A shared raw-message store** across adapters | Deduplicating the journal | Puts raw scheme vocabulary outside the ACL. See D13 |
+| **Reconciliation inside the adapter** | Fewer moving parts | A reconciler that shares the poller's assumptions cannot detect the poller's bugs. See D12 |
+| **Shared database** | "One dispute DB is simpler" | Precisely the Pega failure mode being escaped |
+| **Separate ways** for correspondence | Buy a comms platform, disconnect it | Regulatory notices are legally coupled to case timers |
 
 ---
 
-## 2. Part A — Reverse-engineering Pega OOTB Smart Dispute
+## 2. AS-IS — reverse-engineering Pega Smart Dispute
 
 ### 2.1 What OOTB Smart Dispute actually gives you
 
@@ -355,197 +395,253 @@ flowchart LR
 | Network connectors inside the case engine | Mastercom outage stalls the whole case engine | Adapter services + circuit breaker + outbox |
 | UI tightly bound to case model | Any persona UX change needs a case-type change | BFF per persona (D6) |
 | Provisional-credit logic in activities | Money logic untestable in isolation | Financial Posting Service, idempotent commands |
-| Agents/tickler for all timers | SLA agent contention at scale | Dedicated Timer service (EventBridge Scheduler + DynamoDB TTL journal) |
+| Agents/tickler for all timers | SLA agent contention at scale | Dedicated timer capability (external scheduler + TTL-expiring journal) |
 
 ---
 
-## 3. Part B — Domain-Driven Design: subdomains & bounded contexts
+## 3. Domain model — subdomains & bounded contexts
 
 ### 3.1 Subdomain classification
 
 ```mermaid
 flowchart TB
-    subgraph CORE["CORE DOMAIN — competitive differentiation, build & own"]
-        C1["Dispute Case Management<br/>& Lifecycle"]
-        C2["Eligibility, Rights<br/>& Dispute Rules"]
-        C3["Network Exchange<br/>(scheme lifecycle)"]
-        C4["Claim Intake &<br/>Triage"]
+    subgraph CORE["CORE DOMAIN — competitive differentiation · build and own"]
+        direction LR
+        C1["BC-2<br/>Dispute Case Management<br/>and Lifecycle"]
+        C2["BC-3<br/>Eligibility, Rights<br/>and Dispute Rules"]
+        C3["BC-4<br/>Network Exchange<br/>the scheme conversation"]
+        C4["BC-1<br/>Claim Intake<br/>and Triage"]
     end
     subgraph SUPPORT["SUPPORTING SUBDOMAINS — build, but commodity logic"]
-        S1["Evidence &<br/>Document Mgmt"]
-        S2["Financial Posting<br/>& Recovery"]
-        S3["Compliance,<br/>Timers & SLA"]
-        S4["Work Assignment<br/>& Queueing"]
-        S5["Partner Integration<br/>(PAI)"]
-        S6["Correspondence &<br/>Notification"]
+        direction LR
+        S1["BC-6<br/>Evidence and<br/>Document Mgmt"]
+        S2["BC-5<br/>Financial Posting<br/>and Recovery"]
+        S3["BC-7<br/>Compliance,<br/>Timers and SLA"]
+        S4["BC-8<br/>Work Assignment<br/>and Queueing"]
+        S5["BC-9<br/>Partner Integration<br/>deflection only"]
+        S6["BC-10<br/>Correspondence and<br/>Notification"]
+        S7["BC-17<br/>Reconciliation<br/>and Assurance"]
     end
-    subgraph GENERIC["GENERIC SUBDOMAINS — buy / reuse / integrate"]
-        G1["Identity & Access<br/>(Cognito / PingID)"]
-        G2["Customer, Account<br/>& Card Reference"]
-        G3["Transaction Retrieval<br/>(core banking / switch)"]
-        G4["Fraud & Risk Scoring"]
-        G5["Reporting, Analytics<br/>& Audit"]
-        G6["Tokenization /<br/>Card Vault"]
+    subgraph GENERIC["GENERIC SUBDOMAINS — integrate, do not build"]
+        direction LR
+        G1["BC-15<br/>Identity<br/>and Access"]
+        G2["BC-12<br/>Customer, Account<br/>and Card Reference"]
+        G3["BC-13<br/>Transaction Retrieval"]
+        G4["BC-14<br/>Fraud and Risk"]
+        G5["BC-11<br/>Reporting, Analytics<br/>and Audit"]
+        G6["BC-16<br/>Tokenisation<br/>Card Vault"]
     end
-
-    classDef core fill:#0d3b66,color:#fff,stroke:#0d3b66,stroke-width:2px
-    classDef sup fill:#457b9d,color:#fff,stroke:#1d3557
-    classDef gen fill:#adb5bd,color:#000,stroke:#6c757d
+    classDef core fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef sup fill:#457B9D,color:#FFFFFF,stroke:#1D3557,stroke-width:2px
+    classDef gen fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
     class C1,C2,C3,C4 core
-    class S1,S2,S3,S4,S5,S6 sup
+    class S1,S2,S3,S4,S5,S6,S7 sup
     class G1,G2,G3,G4,G5,G6 gen
 ```
 
-**Why this split matters commercially:** engineering investment should be concentrated in the four core contexts. Everything in GENERIC should be integrated, not rebuilt — this is precisely where Pega implementations historically over-build (custom customer masters, custom document stores, custom auth).
+*Colour key: [§0.11](#011-diagram-conventions--the-shared-legend).*
 
-### 3.2 Bounded context definitions
+**Reconciliation & Assurance (S7) is new.** It is classified *supporting* rather than *core* because it creates no competitive advantage — but it is **control-critical**: it is the only capability that detects the others failing silently.
+
+### 3.2 Bounded context index
+
+All seventeen contexts, in number order. Every subdomain box above maps to exactly one — there are no unassigned subdomains.
+
+| BC | Name | Class | What it is responsible for | Detail |
+|---|---|---|---|---|
+| **BC-1** | Claim Intake & Triage | Core | Turns an inbound complaint into an identity-verified, deduplicated `Claim` covering 1..n transactions | [→](#bc-1--claim-intake--triage-core) |
+| **BC-2** | Dispute Case Management | Core · **kernel** | The `DisputeCase` aggregate — stage machine, adjudication, saga orchestration. One case per disputed transaction | [→](#bc-2--dispute-case-management-core--the-kernel) |
+| **BC-3** | Eligibility, Rights & Dispute Rules | Core | Is there a right, under which reason code, within which time bar, needing which evidence, and what may this case do next | [→](#bc-3--eligibility-rights--dispute-rules-core) |
+| **BC-4** | Network Exchange | Core | The conversation with each scheme across four flows — file, poll, fan-out, reconcile-support | [→](#bc-4--network-exchange-core) |
+| **BC-5** | Financial Posting & Recovery | Supporting | Provisional credit, final credit, reversal, write-off, recovery, fees, FX — as commands to core banking | [→](#bc-5--financial-posting--recovery-supporting) |
+| **BC-6** | Evidence & Document Management | Supporting | Capture, scan, classify, redact and package evidence into scheme-compliant bundles | [→](#bc-6--evidence--document-management-supporting) |
+| **BC-7** | Compliance, Timers & SLA | Supporting | Every regulatory and scheme clock, and the evidence of compliance | [→](#bc-7--compliance-timers--sla-supporting) |
+| **BC-8** | Work Assignment & Queueing | Supporting | Queues, skills routing, ownership, escalation, quarantine handling | [→](#bc-8--work-assignment--queueing-supporting) |
+| **BC-9** | Partner Integration | Supporting · **optional** | An optional deflection and evidence channel. No dispute depends on it | [→](#bc-9--partner-integration-supporting--optional) |
+| **BC-10** | Correspondence & Notification | Supporting | Templated notices, including extension notices and advance notice of debit | [→](#bc-10--correspondence--notification-supporting) |
+| **BC-11** | Reporting, Analytics & Audit | Generic | Read models and the immutable audit trail, fed by the published language | [→](#bc-1116--generic-contexts--integrate-do-not-build) |
+| **BC-12** | Customer, Account & Card Reference | Generic | Read-only projection over core banking and CIF | [→](#bc-1116--generic-contexts--integrate-do-not-build) |
+| **BC-13** | Transaction Retrieval | Generic | ACL over the switch and settlement store; produces the canonical `DisputedTransaction` | [→](#bc-1116--generic-contexts--integrate-do-not-build) |
+| **BC-14** | Fraud & Risk | Generic | ACL to the fraud platform — score and case linkage, with degraded fallback | [→](#bc-1116--generic-contexts--integrate-do-not-build) |
+| **BC-15** | Identity & Access | Generic | Customer IdP, corporate IdP, partner credentials. Conformist | [→](#bc-1116--generic-contexts--integrate-do-not-build) |
+| **BC-16** | Tokenisation / Card Vault | Generic | The PCI boundary. **PAN never crosses into our contexts** | [→](#bc-1116--generic-contexts--integrate-do-not-build) |
+| **BC-17** | **Reconciliation & Assurance** | Supporting · **control-critical** | Independently proves our view of every open case matches the scheme's. **Never mutates a case** | [→](#9-reconciliation--assurance) |
+
+**Reading the numbering.** BC-1 to BC-10 are core and supporting, BC-11 to BC-16 generic, and **BC-17 was added last** — it is a supporting context that sits numerically after the generic ones. That is discovery order, not classification order. Renumbering would break every cross-reference in this workspace, so the number is kept and the class column carries the meaning.
+
+### 3.3 Bounded context definitions
 
 #### BC-1 · Claim Intake & Triage *(Core)*
 
 | Aspect | Detail |
 |---|---|
-| **Purpose** | Turn a customer's complaint into a structured, validated, deduplicated `Claim` with 1..n disputable transactions |
-| **Aggregate root** | `Claim` |
-| **Entities / VOs** | `DisputedTransactionRef`, `CardholderStatement`, `IntakeChannel`, `TriageOutcome` |
-| **Ubiquitous language** | *Claim, Intake Channel, Cardholder Statement, Duplicate Claim, Triage, Withdrawal* |
-| **Key invariants** | A claim cannot contain a transaction already under an open dispute; a claim must reference an account owned by the authenticated customer; cardholder statement is mandatory for fraud reason groups |
-| **Owns** | Claim ID generation, intake channel metadata, dedup index |
+| **Purpose** | Turn an inbound complaint into a structured, identity-verified, deduplicated `Claim` with 1..n disputable transactions |
+| **Aggregate root** | `Claim`, `Complaint` |
+| **Entities / VOs** | `DisputedTransactionRef`, `CardholderStatement`, `IntakeChannel`, `TriageOutcome`, `IdentityAssertion` |
+| **Ubiquitous language** | *Complaint, Claim, Intake Channel, Cardholder Statement, Identity Resolution, Duplicate Claim, Reassertion, Triage, Withdrawal* |
+| **Key invariants** | A claim cannot contain a transaction already under an open dispute; a claim must reference an account the identified customer holds; a cardholder statement is mandatory for fraud reason groups |
+| **Owns** | Claim ID generation, intake channel metadata, the dedup index, identity resolution for unauthenticated intake |
 | **Does NOT own** | Chargeback rights, money, network state |
 
-#### BC-2 · Dispute Case Management *(Core — the "kernel")*
+> **`Complaint` and `Claim` are different aggregates.** An unauthenticated intake produces a `Complaint` — no verified identity, so no dedup, no transaction resolution, no scheme routing. It becomes a `Claim` only once identity is resolved. Regulatory complaint-handling and dispute-resolution are separate regimes with separate clocks; conflating them starts the wrong one.
+
+#### BC-2 · Dispute Case Management *(Core — the kernel)*
 
 | Aspect | Detail |
 |---|---|
 | **Purpose** | Own the long-running lifecycle of one dispute against exactly one transaction; the saga orchestrator |
 | **Aggregate root** | `DisputeCase` |
-| **Entities / VOs** | `CaseStatus`, `LifecycleStage`, `ReasonCode`, `DisputeAmount`, `CaseParty`, `Decision`, `Outcome` |
-| **Ubiquitous language** | *Dispute Case, Stage, Cycle (1st chargeback / 2nd presentment / pre-arb / arbitration), Adjudication, Liability Shift, Case Outcome, Withdrawal, Re-open* |
-| **Key invariants** | A case is in exactly one lifecycle stage; stage transitions follow the scheme-specific state machine; a case cannot advance to a network cycle without an active chargeback right; a closed case can only be re-opened within the network re-open window |
-| **Owns** | Case state machine, case timeline, decisions, outcomes |
+| **Entities / VOs** | `CaseStatus`, `LifecycleStage`, `ReasonCode`, `DisputeAmount`, `CaseParty`, `Decision`, `Outcome`, `LiabilitySplit` |
+| **Ubiquitous language** | *Dispute Case, Stage, Cycle, Adjudication, Liability Shift, Partial Acceptance, Case Outcome, Withdrawal, Recall, Re-open, Appeal* |
+| **Key invariants** | A case is in exactly one stage; transitions follow the scheme-specific state machine; a case cannot advance to a network cycle without an active chargeback right; the amount of any cycle never exceeds the amount of the cycle before it; the sum of chargebacks on one transaction never exceeds the transaction amount |
+| **Owns** | Case state machine, timeline, decisions, outcomes, liability allocation |
 | **Does NOT own** | Rule content, money postings, network wire format |
+
+**Three capabilities the previous model lacked:**
+
+- **Partial acceptance** — a counterparty may accept part of a claim; the remainder is treated as declined, and the accepted portion needs its own liability decision (write-off or cardholder-liable).
+- **Recall and withdraw** — available throughout, whenever we are the initiating party and are awaiting the counterparty.
+- **Appeal** — a real stage after arbitration where the disputed amount is at or above the scheme threshold. The stage machine must accept it.
 
 #### BC-3 · Eligibility, Rights & Dispute Rules *(Core)*
 
 | Aspect | Detail |
 |---|---|
-| **Purpose** | Answer "is there a dispute right, under which reason code, within which time bar, requiring which evidence?" |
+| **Purpose** | Answer "is there a dispute right, under which reason code, within which time bar, requiring which evidence, and what may this case legally do next?" |
 | **Aggregate root** | `RuleSet` (versioned, effective-dated), `EligibilityAssessment` |
-| **Entities / VOs** | `ChargebackRight`, `ReasonCode`, `TimeBar`, `EvidenceRequirement`, `SchemeVersion`, `ConditionPredicate` |
-| **Ubiquitous language** | *Chargeback Right, Reason Code, Condition (Visa) / Message Reason Code (MC), Time Bar, Dispute Window, Evidence Requirement, Pre-condition, Liability* |
-| **Key invariants** | An assessment is always evaluated against the ruleset version effective at the transaction date, never "today's" ruleset; every denial carries a machine-readable denial reason |
-| **Owns** | Mastercard MDR reason codes (4837, 4853, 4855, 4863, 4808...), Visa VCR dispute conditions (10.4, 12.5, 13.1, 13.7...), time bars, evidence matrices |
-| **Notable** | This is the context that turns "network release note" into a **data change**, not a code change |
+| **Entities / VOs** | `ChargebackRight`, `ReasonCode`, `TimeBar`, `EvidenceRequirement`, `SchemeVersion`, `PreCondition`, `PermittedAction` |
+| **Ubiquitous language** | *Chargeback Right, Reason Code, Dispute Condition, Time Bar, Dispute Window, Evidence Requirement, Pre-condition, Permitted Action, Workflow Type, Good Faith* |
+| **Key invariants** | An assessment is always evaluated against the ruleset version effective at the **transaction date**, never today's; every denial carries a machine-readable reason |
+| **Owns** | Reason codes and dispute conditions, workflow classification, time bars, evidence matrices, pre-conditions, permitted-action sets, write-off thresholds |
+| **Notable** | This is the context that turns a scheme release note into a **data change** |
+
+> **It also owns `permittedActions`.** The UI never computes what a case may do next — including whether pre-arbitration is skippable, whether good faith is available after a time bar expires, and who the filing party is for this workflow.
 
 #### BC-4 · Network Exchange *(Core)*
 
 | Aspect | Detail |
 |---|---|
-| **Purpose** | Reliable, ordered, idempotent, auditable exchange of dispute messages with Mastercom and VROL |
-| **Aggregate root** | `NetworkExchange` (one per outbound message + its correlated response) |
-| **Entities / VOs** | `SchemeMessage`, `NetworkCorrelationId`, `TransmissionAttempt`, `SchemeAcknowledgement`, `NetworkRuling` |
-| **Ubiquitous language** | *Chargeback submission, Second Presentment, Pre-Arbitration, Arbitration Case Filing, Ruling, Fee, Claim ID (VROL), Case ID (Mastercom), Cycle* |
-| **Key invariants** | Exactly-once semantics per scheme correlation ID; every outbound message is journalled before transmission (transactional outbox); no message leaves without a valid ruleset-derived reason code |
-| **Sub-services** | `mcom-adapter`, `vrol-adapter`, `network-router`, `scheme-resolution` |
+| **Purpose** | Reliable, ordered, idempotent, auditable conversation with each scheme across four distinct flows |
+| **Aggregate root** | `NetworkExchange` — one per message plus its correlated response |
+| **Entities / VOs** | `SchemeMessage`, `NetworkCorrelationId`, `TransmissionAttempt`, `SchemeAcknowledgement`, `NetworkRuling`, `InitiatingParty`, `FundPosition` |
+| **Ubiquitous language** | *File, Poll, Acknowledge, Cycle, Correlation, Ruling, Fee, Quarantine, Initiating Party, Fund Position* |
+| **Key invariants** | Exactly-once semantics per scheme correlation ID; every outbound message is journalled **before** transmission; a scheme acknowledgement is sent **only after** the local commit; no message leaves without a ruleset-derived reason code; raw scheme payloads never cross the context boundary |
+| **Detail** | [§8 — the four flows](#8-scheme-integration--the-four-flows) |
+
+**`fundPosition` is new.** The scheme moves the disputed amount between issuer and acquirer as cycles progress, and the rules differ by workflow — in Visa Allocation the funds stay with the issuer, in Collaboration and MDR they return to the acquirer on a decline. Nothing previously tracked where the money sat mid-dispute.
 
 #### BC-5 · Financial Posting & Recovery *(Supporting)*
 
 | Aspect | Detail |
 |---|---|
-| **Purpose** | Provisional credit, final credit/debit, reversal, write-off, recovery, fee booking — *as commands to core banking* |
+| **Purpose** | Provisional credit, final credit and debit, reversal, write-off, recovery, fee booking, FX — as **commands** to core banking |
 | **Aggregate root** | `PostingInstruction` |
-| **Entities / VOs** | `ProvisionalCredit`, `FinalCredit`, `Reversal`, `WriteOff`, `NetworkFee`, `RecoveryItem`, `PostingIdempotencyKey` |
-| **Ubiquitous language** | *Provisional Credit, PC Reversal, Final Credit, Write-off, Recovery, Good Faith Collection, Suspense Account, Loss Booking* |
-| **Key invariants** | Every posting is idempotent on `(caseId, postingType, cycle)`; a PC reversal cannot exceed the PC amount; postings are never issued without a case decision event |
-| **Does NOT own** | Ledger balances (core banking is the system of record) |
+| **Entities / VOs** | `ProvisionalCredit`, `FinalCredit`, `Reversal`, `WriteOff`, `NetworkFee`, `RecoveryItem`, `FxAdjustment`, `PostingIdempotencyKey` |
+| **Ubiquitous language** | *Provisional Credit, PC Reversal, Final Credit, Write-off, Recovery, Good Faith Collection, Suspense, Loss Booking, FX Revaluation* |
+| **Key invariants** | Every posting is idempotent on `(caseId, postingType, cycle)`; a reversal cannot exceed the original; postings are never issued without a case decision event; **a provisional credit cannot be reversed while the investigation is open**, and reversal requires advance notice |
+| **Does NOT own** | Ledger balances — core banking is the system of record |
+
+> **FX is in scope.** A cross-currency dispute settles at a different rate from the one it was filed at. Somebody absorbs the difference, and it must be booked deliberately rather than discovered at reconciliation.
 
 #### BC-6 · Evidence & Document Management *(Supporting)*
 
 | Aspect | Detail |
 |---|---|
-| **Purpose** | Capture, virus-scan, classify, redact and package evidence into scheme-compliant document bundles |
+| **Purpose** | Capture, virus-scan, classify, redact and package evidence into scheme-compliant bundles |
 | **Aggregate root** | `EvidenceBundle` |
-| **Entities / VOs** | `EvidenceItem`, `DocumentClassification`, `RedactionPolicy`, `SchemeDocumentManifest` |
-| **Ubiquitous language** | *Evidence, Compelling Evidence (Visa CE3.0), Supporting Documentation, Bundle, Manifest, Redaction, Retention* |
-| **Key invariants** | Evidence is immutable once bundled and transmitted; PAN/PII redaction runs before any network transmission; retention honours the longest of scheme + regulatory clocks |
+| **Entities / VOs** | `EvidenceItem`, `DocumentClassification`, `RedactionPolicy`, `SchemeDocumentManifest`, `StructuredEvidence` |
+| **Key invariants** | Evidence is immutable once bundled and transmitted; PAN and PII redaction runs before any transmission; retention honours the longest of scheme and regulatory clocks |
+
+> **Structured versus document evidence.** Visa's compelling-evidence standard delivers machine-evaluable fields; Mastercard delivers documents. That asymmetry decides where auto-adjudication is viable first.
 
 #### BC-7 · Compliance, Timers & SLA *(Supporting)*
 
 | Aspect | Detail |
 |---|---|
-| **Purpose** | Own every clock: Reg E 10/45/90, Reg Z, scheme time bars, internal SLAs, and the evidence of compliance |
+| **Purpose** | Own every clock — regulatory, scheme and internal — and the evidence of compliance |
 | **Aggregate root** | `RegulatoryTimer`, `ComplianceObligation` |
-| **Ubiquitous language** | *Reg E, Reg Z, Provisional Credit Deadline, Final Resolution Deadline, Time Bar, Breach, Tickler, Escalation* |
-| **Key invariants** | A timer is deterministic from the event that started it; a breach is recorded permanently even if later remediated |
+| **Key invariants** | A timer is deterministic from the event that started it; a breach is recorded permanently even if later remediated; **a scheme response deadline is a hard escalation, not a soft SLA** |
+
+> Under Visa's response certification, failing to respond in time **is** acceptance of liability. A missed timer here is a financial loss, not a missed KPI.
 
 #### BC-8 · Work Assignment & Queueing *(Supporting)*
 
-Replaces Pega workbaskets/worklists. Aggregate: `WorkItem`. Language: *Queue, Skill, Assignment, Escalation, Ownership, Pull vs Push routing*.
+Aggregate: `WorkItem`. Language: *Queue, Skill, Assignment, Escalation, Ownership, Pull versus Push routing, Quarantine queue*.
 
-#### BC-9 · Partner Integration — PAI *(Supporting, but strategically critical)*
+#### BC-9 · Partner Integration *(Supporting — optional)*
 
 | Aspect | Detail |
 |---|---|
-| **Purpose** | The only door through which Acquirers and Merchants touch **our platform** — a *deflection and evidence* channel that runs alongside, not instead of, the scheme rails |
+| **Purpose** | An **optional** deflection and evidence channel for acquirers and merchants. No dispute depends on it |
 | **Aggregate root** | `PartnerEngagement` |
-| **Entities / VOs** | `PartnerIdentity`, `MerchantProfile`, `AcquirerProfile`, `InboundRepresentment`, `PartnerEvidenceSubmission`, `WebhookSubscription` |
-| **Ubiquitous language** | *Partner, Engagement, Deflection, Pre-dispute (RDR/CDRN-style), Merchant Response, Acquirer Response, Webhook* |
-| **Key invariants** | A partner may only see cases where they are a named party; partner-supplied data is untrusted until validated against the canonical case |
-| **Pattern** | **Open Host Service + Published Language** |
+| **Key invariants** | A partner may only see cases where they are a named party; partner-supplied data is untrusted until validated; **a partner response never overrides a scheme fact** |
+| **Pattern** | Open Host Service + Published Language |
+
+> **This is not how acquirers work disputes.** They use their own dispute system against the scheme. This context exists to capture value from pre-dispute deflection — the cheapest possible outcome — not to provide access.
 
 #### BC-10 · Correspondence & Notification *(Supporting)*
 
-Aggregate: `CommunicationRequest`. Language: *Acknowledgement Letter, Provisional Credit Notice, Resolution Letter, Reg E Notice, Template, Channel Preference*.
+Aggregate: `CommunicationRequest`. Language: *Acknowledgement, Provisional Credit Notice, Resolution Letter, Regulatory Notice, Extension Notice, Advance Notice of Debit, Template, Channel Preference*.
 
-#### BC-11..16 · Generic contexts (integrate, don't build)
+> Includes the **advance notice** that must precede a provisional-credit reversal, and the **extension notice** required when an investigation runs past the regulatory limit.
+
+#### BC-17 · Reconciliation & Assurance *(Supporting — control-critical)* — NEW
+
+| Aspect | Detail |
+|---|---|
+| **Purpose** | Continuously prove that our view of every open case matches the scheme's view, and surface every divergence |
+| **Aggregate roots** | `ReconciliationRun`, `Divergence` |
+| **Entities / VOs** | `DiscrepancyClass`, `AssuranceWindow`, `RemediationAction`, `CoverageMetric` |
+| **Ubiquitous language** | *Reconciliation run, divergence, drift, discrepancy class, remediation, assurance window, coverage* |
+| **Key invariants** | **It never mutates a case** — it raises a divergence and a work item; a divergence is recorded permanently even after remediation; it must query the scheme **independently** of the polling path |
+| **Detail** | [§9](#9-reconciliation--assurance) |
+
+#### BC-11..16 · Generic contexts — integrate, do not build
 
 | BC | Integrate with | Pattern |
 |---|---|---|
-| Customer / Account / Card Reference | Core banking, CIF | ACL, read-only |
-| Transaction Retrieval | Payment switch, settlement store | ACL, read-only |
-| Fraud & Risk | Existing fraud platform (Falcon / in-house) | ACL, request-reply |
-| Tokenization / Card Vault | Existing PCI vault | ACL, **PAN never crosses into our contexts** |
-| Identity & Access | Cognito (customer) + corporate IdP (issuer ops) + partner OAuth2 (PAI) | Conformist |
-| Reporting, Analytics & Audit | Redshift / OpenSearch / QuickSight | Published Language via event backbone |
+| BC-12 Customer / Account / Card Reference | Core banking, CIF | ACL, read-only |
+| BC-13 Transaction Retrieval | Payment switch, settlement store | ACL, read-only |
+| BC-14 Fraud & Risk | Existing fraud platform | ACL, request-reply with degraded fallback |
+| BC-15 Identity & Access | Customer IdP, corporate IdP, partner OAuth2 | Conformist |
+| BC-16 Tokenisation / Card Vault | Existing PCI vault | ACL — **PAN never crosses into our contexts** |
+| BC-11 Reporting, Analytics & Audit | Analytical store, search index | Published Language via the event backbone |
 
 ---
 
-## 4. Part C — Context map & integration patterns
-
-### 4.1 The context map
+## 4. Context map & integration patterns
 
 ```mermaid
 flowchart TB
-    subgraph EXP["Experience Layer"]
-        CBFF["Customer BFF"]
-        OBFF["Issuer-Ops BFF"]
-        PBFF["Partner BFF / PAI Gateway"]
+    subgraph EXP["Experience layer"]
+        direction LR
+        CBFF["Customer experience<br/>+ backend-for-frontend"]
+        OBFF["Issuer-Ops experience<br/>+ backend-for-frontend"]
+        PBFF["Partner gateway<br/>optional"]
     end
-
-    CI["<b>BC-1 Claim Intake</b><br/>Core"]
-    DC["<b>BC-2 Dispute Case Mgmt</b><br/>Core / Orchestrator"]
-    RU["<b>BC-3 Eligibility &amp; Rules</b><br/>Core"]
-    NX["<b>BC-4 Network Exchange</b><br/>Core"]
-    FP["<b>BC-5 Financial Posting</b><br/>Supporting"]
-    EV["<b>BC-6 Evidence</b><br/>Supporting"]
-    CT["<b>BC-7 Compliance &amp; Timers</b><br/>Supporting"]
-    WA["<b>BC-8 Work Assignment</b><br/>Supporting"]
-    PA["<b>BC-9 PAI</b><br/>Supporting / OHS"]
-    CO["<b>BC-10 Correspondence</b><br/>Supporting"]
-
-    CUST["Customer/Account/Card<br/>(Core Banking)"]
-    TXN["Transaction Retrieval<br/>(Switch/Settlement)"]
-    FRD["Fraud &amp; Risk"]
-    VAULT["Token Vault (PCI)"]
+    CI["BC-1 Claim Intake<br/>Core"]
+    DC["BC-2 Dispute Case Mgmt<br/>Core · orchestrator"]
+    RU["BC-3 Eligibility and Rules<br/>Core"]
+    NX["BC-4 Network Exchange<br/>Core"]
+    REC["BC-17 Reconciliation<br/>and Assurance"]
+    FP["BC-5 Financial Posting"]
+    EV["BC-6 Evidence"]
+    CT["BC-7 Compliance and Timers"]
+    WA["BC-8 Work Assignment"]
+    PA["BC-9 Partner Integration"]
+    CO["BC-10 Correspondence"]
+    CUST["Customer / Account / Card"]
+    TXN["Transaction Retrieval"]
+    FRD["Fraud and Risk"]
+    VAULT["Token Vault"]
     LDGR["Core Banking Ledger"]
-    MCOM["MCOM / Mastercom"]
-    VROL["VROL (Visa)"]
-    RPT["Reporting / Audit"]
+    SCHEME["VROL / MCOM<br/>card schemes"]
+    RPT["Reporting and Audit"]
 
     CBFF -->|"CS"| CI
     OBFF -->|"CS"| DC
     PBFF -->|"CS"| PA
-
-    CI -->|"CS: ClaimAccepted"| DC
+    CI -->|"CS · ClaimAccepted"| DC
     DC -->|"CS + ACL"| RU
     DC -->|"CS"| NX
     DC -->|"CS"| FP
@@ -554,64 +650,60 @@ flowchart TB
     DC -->|"CS"| WA
     DC -->|"CS"| CO
     PA -->|"Partnership"| DC
-    PA -->|"CS"| EV
     NX -->|"CS"| EV
-
     CI -.->|"ACL"| CUST
     CI -.->|"ACL"| TXN
     DC -.->|"ACL"| FRD
-    NX -.->|"ACL"| VAULT
-    FP -.->|"ACL + Customer/Supplier<br/>(we are downstream)"| LDGR
-    NX ==>|"<b>Conformist + ACL</b>"| MCOM
-    NX ==>|"<b>Conformist + ACL</b>"| VROL
-    DC -.->|"Published Language<br/>(event stream)"| RPT
+    NX -.->|"ACL · PCI boundary"| VAULT
+    FP -.->|"ACL · we are downstream"| LDGR
+    NX ==>|"Conformist + ACL"| SCHEME
+    REC ==>|"Conformist + ACL<br/>independent query path"| SCHEME
+    REC -.->|"reads case state · never writes"| DC
+    REC ==>|"DivergenceDetected"| WA
+    DC -.->|"Published Language"| RPT
 
-    classDef core fill:#0d3b66,color:#fff,stroke:#0d3b66,stroke-width:2px
-    classDef sup fill:#457b9d,color:#fff
-    classDef ext fill:#adb5bd,color:#000
-    classDef net fill:#f4a261,color:#000,stroke:#e76f51,stroke-width:2px
-    classDef exp fill:#a8dadc,color:#000
+    classDef core fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef sup fill:#457B9D,color:#FFFFFF,stroke:#1D3557,stroke-width:2px
+    classDef newbc fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:3px
+    classDef ext fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
+    classDef scheme fill:#F4A261,color:#000000,stroke:#C1440E,stroke-width:2px
+    classDef exp fill:#A8DADC,color:#000000,stroke:#457B9D,stroke-width:2px
     class CI,DC,RU,NX core
     class FP,EV,CT,WA,PA,CO sup
+    class REC newbc
     class CUST,TXN,FRD,VAULT,LDGR,RPT ext
-    class MCOM,VROL net
+    class SCHEME scheme
     class CBFF,OBFF,PBFF exp
+    linkStyle default stroke:#54606C,stroke-width:1.5px
 ```
 
-### 4.2 Relationship catalogue — every edge, with its pattern and its justification
+### 4.1 Relationship catalogue
 
-| # | Upstream (U) → Downstream (D) | Pattern | Why this pattern | Mechanism |
-|---|---|---|---|---|
-| R1 | Claim Intake → Dispute Case | **Customer/Supplier** | Intake is upstream and must satisfy Case Mgmt's contract; both teams are internal and can negotiate | Async event `ClaimAccepted` on MSK, versioned Avro |
-| R2 | Dispute Case ↔ Eligibility & Rules | **Customer/Supplier + ACL** | Case Mgmt drives the requirement; ACL prevents scheme rule vocabulary (MC "message reason code" vs Visa "condition") leaking into the case model | Sync REST `POST /assessments` returning a canonical `ChargebackRight` |
-| R3 | Dispute Case → Network Exchange | **Customer/Supplier** | Case Mgmt is the client; Network Exchange publishes a stable canonical command interface | Command `SubmitNetworkCycle` via SQS FIFO (ordered per case) |
-| R4 | **Network Exchange → MCOM** | **Conformist + ACL** | Mastercard dictates the model absolutely; we conform on the wire but translate at the boundary so no Mastercom type reaches BC-2 | `mcom-adapter` service = the ACL |
-| R5 | **Network Exchange → VROL** | **Conformist + ACL** | Same reasoning; Visa's VCR/VROL model differs materially from Mastercom's | `vrol-adapter` service = the ACL |
-| R6 | Dispute Case ↔ Compliance & Timers | **Partnership** | Neither can succeed without the other: a case transition without its regulatory clock is a compliance failure; changes are co-released | Bidirectional events + shared `TimerPolicy` published language |
-| R7 | Dispute Case → Financial Posting | **Customer/Supplier** | Case decisions drive postings; Financial Posting exposes a stable command API | Command `IssuePosting` with idempotency key |
-| R8 | Financial Posting → Core Banking Ledger | **Conformist + ACL** (we are downstream of a fixed system) | Core banking will not change its posting API for the dispute platform | Adapter with retry + reconciliation ledger |
-| R9 | PAI ↔ Dispute Case | **Partnership** | Merchant/acquirer engagement changes case state and vice versa; contract evolves together | Sync commands + webhook fan-out |
-| R10 | PAI → Merchant / Acquirer | **Open Host Service + Published Language** | Many partners, one published contract; we cannot bespoke-integrate per merchant | Public OpenAPI 3.1 + JSON Schema events, semantic versioning, mTLS |
-| R11 | Claim Intake → Customer/Account/Card | **Anticorruption Layer**, upstream is *Conformist-imposed* | Core banking CIF model is legacy and hostile (COBOL copybook shapes); must not pollute the domain | Read-only adapter, cached projections |
-| R12 | Claim Intake → Transaction Retrieval | **Anticorruption Layer** | Switch/settlement record formats vary by product | Adapter producing canonical `DisputedTransaction` |
-| R13 | Dispute Case → Fraud & Risk | **Anticorruption Layer** | Fraud platform speaks scores/rules, not disputes | Request-reply with timeout + degraded fallback |
-| R14 | Network Exchange → Token Vault | **ACL, PCI boundary** | PAN must be dereferenced only inside the PCI-scoped adapter, at the last possible moment | Vault SDK inside adapter's isolated subnet |
-| R15 | All contexts → Reporting/Audit | **Published Language** | One canonical event schema consumed by many read models | Avro on MSK → Firehose → S3/Redshift |
-| R16 | Correspondence, Work Assignment ← Dispute Case | **Customer/Supplier** | Downstream reactive consumers | Domain events |
-| R17 | Legacy Pega (during migration) ↔ new platform | **Anticorruption Layer, bidirectional** | Coexistence period; neither model should infect the other | `pega-bridge` service, dual-write + reconciliation |
+| # | Upstream → Downstream | Pattern | Why this pattern |
+|---|---|---|---|
+| R1 | Claim Intake → Dispute Case | **Customer/Supplier** | Intake is upstream and must satisfy Case Mgmt's contract; both teams are internal |
+| R2 | Dispute Case ↔ Eligibility & Rules | **Customer/Supplier + ACL** | Prevents scheme rule vocabulary leaking into the case model |
+| R3 | Dispute Case → Network Exchange | **Customer/Supplier** | Case Mgmt is the client; Network Exchange publishes a stable canonical command interface |
+| R4 | **Network Exchange → each scheme** | **Conformist + ACL** | The scheme dictates the model absolutely. The adapter *is* the ACL |
+| R5 | Dispute Case ↔ Compliance & Timers | **Partnership** | Neither succeeds without the other; a stage transition without its clock is a compliance failure |
+| R6 | Dispute Case → Financial Posting | **Customer/Supplier** | Case decisions drive postings; posting exposes a stable idempotent command API |
+| R7 | Financial Posting → Core Banking | **Conformist + ACL** | Core banking will not change its posting API for us |
+| R8 | Partner Integration ↔ Dispute Case | **Partnership** | Deflection changes case state and vice versa; **but a partner fact never overrides a scheme fact** |
+| R9 | Partner Integration → partners | **Open Host Service + Published Language** | Many partners, one published contract |
+| R10 | Claim Intake → Customer/Account/Card | **ACL** | The reference model is legacy and hostile; must not pollute the domain |
+| R11 | Claim Intake → Transaction Retrieval | **ACL** | Settlement record formats vary by product |
+| R12 | Dispute Case → Fraud & Risk | **ACL** | The fraud platform speaks scores, not disputes |
+| R13 | Network Exchange → Token Vault | **ACL, PCI boundary** | PAN is dereferenced only inside the PCI-scoped adapter, at the last possible moment |
+| R14 | All contexts → Reporting/Audit | **Published Language** | One canonical event schema, many read models |
+| **R15** | **Reconciliation → each scheme** | **Conformist + ACL, independent path** | It must not reuse the polling code, or it inherits the polling bugs |
+| **R16** | **Reconciliation → Dispute Case** | **Read-only** | It reads case state and **never writes**. Divergences leave as events, not mutations |
+| R17 | Legacy platform during migration ↔ new platform | **ACL, bidirectional** | Coexistence period; neither model should infect the other |
 
-### 4.3 Patterns explicitly *rejected*
-
-| Pattern | Where it was tempting | Why rejected |
-|---|---|---|
-| **Shared Kernel** | Between Dispute Case and Eligibility & Rules ("just share the ReasonCode enum") | A shared kernel across two independently-releasing core contexts recreates the Pega coupling in miniature. Reason codes are *scheme* vocabulary — they belong to Rules, and Case Mgmt receives them as opaque, validated values. |
-| **Conformist (internal)** | Financial Posting conforming to core banking's model everywhere | Would push GL vocabulary into the dispute domain. ACL confined to the adapter instead. |
-| **Big Ball of Mud / shared DB** | "One dispute DB is simpler" | This is exactly the Pega failure mode being escaped. |
-| **Separate Ways** | Correspondence (buy a comms platform, disconnect it) | Reg E notices are legally coupled to case timers — cannot be separate ways. |
+**R15 and R16 are the two that make reconciliation trustworthy.** An independent query path means a poller defect cannot hide itself; read-only access means a reconciler defect cannot corrupt case state.
 
 ---
 
-## 5. Part D — The BIN routing decision (FE vs BE)
+## 5. Scheme resolution — where the routing decision lives
 
 ### 5.1 The question, stated precisely
 
@@ -646,7 +738,7 @@ sequenceDiagram
     participant CI as Claim Intake Svc
     participant TX as Transaction Retrieval Svc
     participant SR as Scheme Resolution Svc
-    participant BIN as BIN Range Store<br/>(DynamoDB, weekly refresh)
+    participant BIN as BIN Range Store<br/>(effective-dated, weekly refresh)
     participant TV as Token Vault (PCI)
     participant DC as Dispute Case Svc
     participant NR as Network Router
@@ -757,434 +849,664 @@ Adding Visa after Mastercard is then: deploy `vrol-adapter`, load the Visa rules
 
 ---
 
-## 6. Part E — Microservice catalog
+## 6. Capability catalog
 
-### 6.1 Service inventory
+**Capabilities, not products.** Each row states *what must be true*, its consistency boundary, and the store **class** it needs. [Part 12](#12-technology-realisation) maps store classes to concrete products.
 
-Legend — **Sync** = REST/gRPC · **Async** = MSK topic / SQS / EventBridge · DB per service.
+**Store classes** — `TX` transactional, ACID, supports an outbox in the same transaction · `JRN` append-only journal, high write volume, WORM-capable · `KV` key-value with TTL and conditional writes · `OBJ` object storage with immutability locks · `IDX` search / analytical read model · `NONE` stateless.
 
-| # | Service | Bounded context | Responsibility (one sentence) | Datastore | Key sync API | Publishes | Consumes |
-|---|---|---|---|---|---|---|---|
-| 1 | `customer-bff` | Experience | Aggregates and shapes the customer digital-banking dispute journey | ElastiCache (session) | GraphQL / BFF REST | — | — |
-| 2 | `issuer-ops-bff` | Experience | Aggregates the issuer back-office agent workspace | ElastiCache | BFF REST | — | — |
-| 3 | `partner-bff` (PAI Gateway) | BC-9 | The only externally reachable API into our platform for acquirers & merchants — deflection & evidence, alongside the scheme rails | DynamoDB (rate/idempotency) | Public OpenAPI 3.1 | `PartnerEngagementRecorded` | `CaseStatusChanged` |
-| 4 | `claim-intake-svc` | BC-1 | Creates, validates, deduplicates claims; orchestrates intake enrichment | Aurora PG | `POST /claims`, `GET /claims/{id}` | `ClaimSubmitted`, `ClaimAccepted`, `ClaimRejected` | `TransactionEnriched` |
-| 5 | `transaction-retrieval-svc` | BC-13 (generic) | ACL over switch/settlement; returns canonical `DisputedTransaction` | Aurora PG + Redis cache | `POST /transactions:lookup` | `TransactionEnriched` | — |
-| 6 | `scheme-resolution-svc` | BC-4 | **Owns the BIN→network decision** (D1) | DynamoDB (account ranges, effective-dated) | `POST /scheme:resolve` | `SchemeResolved` | BIN file drops (S3 event) |
-| 7 | `dispute-case-svc` | BC-2 | The case aggregate + saga orchestrator; the system of record for case state | Aurora PG + Step Functions | `GET/POST /cases`, `POST /cases/{id}/decisions` | `CaseOpened`, `CaseStageChanged`, `CaseDecided`, `CaseClosed` | `ClaimAccepted`, `NetworkResponseReceived`, `PostingCompleted`, `TimerFired`, `PartnerResponseReceived` |
-| 8 | `dispute-rules-svc` | BC-3 | Effective-dated, versioned scheme rulesets; eligibility & rights assessment | Aurora PG + DMN engine | `POST /assessments`, `GET /reason-codes?scheme=&asOf=`, `GET /evidence-requirements` | `RuleSetPublished` | — |
-| 9 | `network-router-svc` | BC-4 | Strategy dispatch to the correct scheme adapter; outbox + ordering per case | DynamoDB (outbox) | `POST /network/cycles` | `NetworkSubmissionQueued` | `CaseStageChanged` |
-| 10 | `mcom-adapter-svc` | BC-4 | ACL to Mastercom: chargeback, 2nd presentment, pre-arb, arbitration, retrieval | Aurora PG (journal) + S3 | internal only | `NetworkMessageSent`, `NetworkResponseReceived` | `NetworkSubmissionQueued` |
-| 11 | `vrol-adapter-svc` | BC-4 | ACL to VROL/VCR: dispute, pre-arb, arbitration, Order Insight/CE3.0 | Aurora PG (journal) + S3 | internal only | `NetworkMessageSent`, `NetworkResponseReceived` | `NetworkSubmissionQueued` |
-| 12 | `evidence-svc` | BC-6 | Upload, AV-scan, classify, redact, bundle, retain | S3 + Aurora PG metadata | `POST /evidence`, `POST /bundles` | `EvidenceBundled`, `EvidenceRejected` | `EvidenceRequested` |
-| 13 | `financial-posting-svc` | BC-5 | Idempotent posting commands to core banking; recovery & write-off | Aurora PG | `POST /postings` | `PostingRequested`, `PostingCompleted`, `PostingFailed` | `CaseDecided`, `TimerFired` |
-| 14 | `compliance-timer-svc` | BC-7 | Every regulatory and scheme clock; breach detection | DynamoDB + EventBridge Scheduler | `POST /timers`, `GET /obligations/{caseId}` | `TimerStarted`, `TimerFired`, `TimerBreached` | `CaseOpened`, `CaseStageChanged`, `PostingCompleted` |
-| 15 | `work-assignment-svc` | BC-8 | Queues, skills-based routing, ownership, escalation | Aurora PG | `GET /worklist`, `POST /workitems/{id}:claim` | `WorkItemAssigned`, `WorkItemEscalated` | `CaseStageChanged`, `ManualReviewRequired` |
-| 16 | `correspondence-svc` | BC-10 | Templated Reg E letters, emails, push, statement inserts | Aurora PG + SES/SNS | `POST /communications` | `CommunicationSent` | `CaseStageChanged`, `PostingCompleted`, `TimerFired` |
-| 17 | `fraud-gateway-svc` | BC-14 (generic) | ACL to the fraud platform; score + case linkage | none (stateless) | `POST /fraud:assess` | `FraudAssessmentCompleted` | — |
-| 18 | `party-reference-svc` | BC-12 (generic) | ACL over CIF/core banking for customer, account, card, entitlement | Aurora PG (projection) | `GET /cards/{cardRef}`, `GET /accounts/{id}` | `CardProjectionUpdated` | CDC from core banking |
-| 19 | `notification-fanout-svc` | Cross-cutting | Webhook delivery to partners with retry/DLQ and signature | DynamoDB | internal | — | all `Case*` events |
-| 20 | `audit-svc` | Cross-cutting | Append-only, tamper-evident case audit trail | S3 Object Lock + QLDB-style hash chain | `GET /audit/{caseId}` | — | all events |
-| 21 | `reporting-projection-svc` | Cross-cutting | CQRS read models: dispute inventory, aging, network SLA, loss | OpenSearch + Redshift | `GET /reports/*` | — | all events |
-| 22 | `pega-bridge-svc` | Migration only | Bidirectional ACL to legacy Pega during coexistence | Aurora PG (correlation) | internal | `LegacyCaseSynced` | `Case*` events |
+### 6.1 Experience capabilities
 
-### 6.2 Service granularity rationale
+| # | Capability | BC | Responsibility | Store |
+|---|---|---|---|---|
+| 1 | Customer dispute experience | Exp | Self-service intake, status, evidence upload, deadline display. Serves both authenticated and unauthenticated intake | `KV` session |
+| 2 | Issuer operations workspace | Exp | Case investigation, adjudication, queue management, quarantine handling | `KV` session |
+| 3 | Partner gateway *(optional)* | BC-9 | The only externally reachable surface for acquirers and merchants — deflection and evidence only | `KV` rate + idempotency |
+
+### 6.2 Core domain capabilities
+
+| # | Capability | BC | Responsibility | Store | Key interface |
+|---|---|---|---|---|---|
+| 4 | **Claim intake** | BC-1 | Identity resolution, dedup, entitlement, complaint-to-claim promotion | `TX` | `POST /claims`, `POST /complaints` |
+| 5 | **Dispute case management** | BC-2 | The case aggregate, stage machine, saga orchestration, adjudication, partial acceptance, recall, appeal | `TX` + orchestration | `POST /cases/{id}/decisions` |
+| 6 | **Eligibility & rules** | BC-3 | Effective-dated rulesets; rights, reason codes, time bars, pre-conditions, permitted actions, write-off thresholds | `TX` + decision engine | `POST /assessments`, `GET /permitted-actions` |
+| 7 | **Scheme resolution** | BC-4 | The BIN-to-scheme decision, effective-dated by transaction date | `KV` | `POST /scheme:resolve` |
+| 8 | **Network routing** | BC-4 | Outbox, per-case ordering, strategy dispatch to the right adapter | `TX` outbox | `POST /network/cycles` |
+| 9 | **Scheme adapter — one per scheme** | BC-4 | Filer, Poller, Journal, ACL. See [§8](#8-scheme-integration--the-four-flows) | `JRN` + `OBJ` | internal only |
+| 10 | **Reconciliation & assurance** | BC-17 | Independent state comparison, divergence detection, coverage reporting | `TX` + `IDX` | `GET /divergences` |
+
+### 6.3 Supporting capabilities
+
+| # | Capability | BC | Responsibility | Store |
+|---|---|---|---|---|
+| 11 | Evidence management | BC-6 | Upload, scan, classify, redact, bundle, retain | `OBJ` + `TX` metadata |
+| 12 | Financial posting | BC-5 | Idempotent posting commands, recovery, write-off, fee booking, **FX adjustment** | `TX` |
+| 13 | Compliance & timers | BC-7 | Every regulatory and scheme clock; breach detection; hard escalation on scheme deadlines | `KV` + scheduler |
+| 14 | Work assignment | BC-8 | Queues, skills routing, ownership, escalation, **quarantine queue** | `TX` |
+| 15 | Correspondence | BC-10 | Templated notices, **extension notice**, **advance notice of debit** | `TX` + delivery |
+| 16 | Partner notification *(optional)* | BC-9 | Webhook delivery with retry, DLQ and signature | `KV` |
+
+### 6.4 Integration and cross-cutting capabilities
+
+| # | Capability | BC | Responsibility | Store |
+|---|---|---|---|---|
+| 17 | Transaction retrieval | BC-13 | ACL over switch and settlement; canonical `DisputedTransaction` | `TX` + cache |
+| 18 | Party reference | BC-12 | ACL over CIF for customer, account, card, entitlement | `TX` projection |
+| 19 | Fraud gateway | BC-14 | ACL to the fraud platform; score and case linkage | `NONE` |
+| 20 | Audit | X | Append-only, tamper-evident case audit trail | `OBJ` immutable |
+| 21 | Reporting projections | X | CQRS read models — inventory, aging, scheme SLA, loss, **fund position** | `IDX` |
+| 22 | Legacy bridge *(migration only)* | X | Bidirectional ACL to the incumbent platform during coexistence | `TX` correlation |
+
+### 6.5 Granularity rationale
 
 | Grouping decision | Why not finer | Why not coarser |
 |---|---|---|
-| One `dispute-case-svc` (not one per stage) | The case aggregate's invariants (stage transitions) must be enforced transactionally in one place | It would otherwise become a distributed state machine with no consistency boundary |
-| Separate adapter per scheme | Scheme release cycles, certification cycles, and outage domains are independent | A single "network-svc" would couple Mastercard and Visa release trains — the exact Pega problem |
-| `scheme-resolution-svc` split from adapters | Resolution needs the PCI token-vault boundary and a weekly-refreshed BIN store; adapters need scheme certification | Embedding resolution in each adapter duplicates the decision and breaks auditability |
-| `dispute-rules-svc` separate from case | Rules change on the network's schedule; the case engine changes on ours | Embedding rules in the case service reproduces Pega's flow/rule entanglement |
-| `compliance-timer-svc` separate | Timers are a distinct availability concern — they must fire even when the case service is degraded | — |
-| `financial-posting-svc` separate | Different compliance controls (SoD, four-eyes, reconciliation) and different change cadence | — |
+| One dispute case capability, not one per stage | Stage-transition invariants must be enforced transactionally in one place | It would become a distributed state machine with no consistency boundary |
+| One adapter per scheme | Release, certification and outage domains are independent | A single network capability couples the two release trains |
+| Filer and Poller inside one adapter | They share the scheme contract, the credentials and the certification | They have different SLAs and runbooks — hence separate **components**, not separate deployables |
+| Scheme resolution separate from adapters | Needs the PCI vault boundary and a weekly-refreshed range store | Embedding it duplicates the decision and breaks auditability |
+| Rules separate from case | Rules change on the scheme's schedule; the case engine on ours | Embedding them reproduces the flow/rule entanglement being escaped |
+| **Reconciliation separate from adapters** | **It must not share the poller's assumptions** | — |
+| Timers separate | They must fire when the case capability is degraded | — |
+| Financial posting separate | Different compliance controls — segregation of duties, four-eyes, reconciliation | — |
 
-### 6.3 Canonical domain events (the Published Language)
+### 6.6 Canonical domain events — the published language
 
 ```mermaid
 stateDiagram-v2
     direction TB
-    [*] --> ClaimSubmitted
-    ClaimSubmitted --> ClaimAccepted: validation + dedup pass
-    ClaimSubmitted --> ClaimRejected: duplicate / not entitled
+    [*] --> ComplaintReceived: unauthenticated intake
+    [*] --> ClaimSubmitted: identified intake
+    ComplaintReceived --> ClaimSubmitted: identity resolved
+    ComplaintReceived --> ComplaintDiscarded: cannot identify
+    ClaimSubmitted --> ClaimAccepted: validation and dedup pass
+    ClaimSubmitted --> ClaimRejected: duplicate or not entitled
     ClaimAccepted --> CaseOpened
     CaseOpened --> EligibilityAssessed
-    EligibilityAssessed --> ProvisionalCreditIssued: Reg E eligible
-    EligibilityAssessed --> CaseDeniedNoRight: no chargeback right
-    ProvisionalCreditIssued --> EvidenceRequested
-    EvidenceRequested --> EvidenceBundled
+    EligibilityAssessed --> DeflectionOffered: pre-dispute channel available
+    EligibilityAssessed --> CaseDeniedNoRight: no right or time bar expired
+    EligibilityAssessed --> ProvisionalCreditIssued: right confirmed
+    DeflectionOffered --> DeflectionAccepted: merchant refunds
+    DeflectionOffered --> ProvisionalCreditIssued: declined or lapsed
+    ProvisionalCreditIssued --> EvidenceBundled
     EvidenceBundled --> NetworkSubmissionQueued
     NetworkSubmissionQueued --> NetworkMessageSent
     NetworkMessageSent --> NetworkResponseReceived
-    NetworkResponseReceived --> CaseDecided: accepted / represented
+    NetworkResponseReceived --> CaseDecided: accepted or conceded
     NetworkResponseReceived --> NetworkSubmissionQueued: escalate cycle
+    NetworkResponseReceived --> NetworkRulingReceived: scheme ruled
+    NetworkRulingReceived --> AppealFiled: at or above threshold
+    NetworkRulingReceived --> CaseDecided
+    AppealFiled --> CaseDecided: final ruling
     CaseDecided --> PostingCompleted
     PostingCompleted --> CaseClosed
     CaseDeniedNoRight --> CaseClosed
+    DeflectionAccepted --> CaseClosed
     ClaimRejected --> [*]
+    ComplaintDiscarded --> [*]
     CaseClosed --> [*]
 ```
 
-Every event carries a standard envelope:
+Every event carries a standard envelope: `eventId`, `eventType`, `eventVersion`, `occurredAt`, `correlationId`, `causationId`, `tenant`, `subject`, `scheme`, `payload`, `dataClassification`.
 
-```json
-{
-  "eventId": "01J9...ULID",
-  "eventType": "CaseStageChanged",
-  "eventVersion": "1.3.0",
-  "occurredAt": "2026-08-07T09:14:22.117Z",
-  "correlationId": "claim-8f3a...",
-  "causationId": "01J9...previous",
-  "tenant": "ISSUER-BANK-01",
-  "subject": { "caseId": "DC-2026-0000481922", "claimId": "CL-..." },
-  "scheme": { "network": "MASTERCARD", "ruleSetVersion": "MDR-2026.1" },
-  "payload": { "fromStage": "AWAIT_NETWORK", "toStage": "ADJUDICATE", "cycle": 2 },
-  "dataClassification": "CONFIDENTIAL_NO_PAN"
-}
-```
+> **`dataClassification: CONFIDENTIAL_NO_PAN` is enforced by the schema registry: no event schema may contain a PAN field.** This keeps the entire event backbone out of PCI scope.
 
-`dataClassification: CONFIDENTIAL_NO_PAN` is enforced by a schema-registry rule: **no event schema may contain a PAN field.** This keeps the event backbone out of PCI scope.
+**Three event families are new:** `ComplaintReceived` / `ComplaintDiscarded` (unauthenticated intake), `DeflectionOffered` / `DeflectionAccepted` (pre-dispute), and `AppealFiled` (post-arbitration).
 
 ---
 
-## 7. Part F — C4 model (L1 / L2 / L3)
+## 7. C4 model — L1 / L2 / L3
 
-### 7.1 Level 1 — System Context
+### 7.1 Level 1 — System context
 
-> **Presentation master:** [`source/C4_L1_SystemContext_DisputePlatform.drawio`](../source/C4_L1_SystemContext_DisputePlatform.drawio) · rendered at [`diagrams/C4_L1_SystemContext_DisputePlatform.svg`](../diagrams/C4_L1_SystemContext_DisputePlatform.svg).
->
-> The Mermaid below is the **inline approximation**. Mermaid auto-layouts and cannot hold fixed bands or connection points, so the draw.io version is authoritative for presentation. See [`prompts/mermaid-diagram-rules.md`](../prompts/mermaid-diagram-rules.md) Appendix C.
+> **Presentation master:** [`source/C4_L1_SystemContext_DisputePlatform.drawio`](../source/C4_L1_SystemContext_DisputePlatform.drawio) · rendered at [`diagrams/C4_L1_SystemContext_DisputePlatform.svg`](../diagrams/C4_L1_SystemContext_DisputePlatform.svg). The Mermaid below is the inline approximation — it cannot hold fixed bands or connection points.
 
 ```mermaid
-flowchart TB
+flowchart LR
 
-    subgraph PERSONAS["PERSONAS"]
-        direction LR
-        CU["<b>Customer</b><br/>[Person]<br/>Cardholder raising a dispute"]
-        BO["<b>Issuer BackOffice Team</b><br/>[Person]<br/>Contact centre · disputes analyst"]
-        AC["<b>Acquirer</b><br/>[Person]<br/>Merchant's bank"]
-        ME["<b>Merchant</b><br/>[Person]<br/>Business that took the payment"]
-    end
-
-    subgraph SOFTWARE["SOFTWARE SYSTEMS"]
-        direction LR
-        PLAT["<b>Dispute Platform</b><br/>[Software System — IN SCOPE]<br/>Managed by Issuer · intake, case lifecycle,<br/>rules, evidence, postings, scheme adapters"]
-        PAI["<b>PAI</b><br/>[Software System]<br/>Partner API Interface<br/>deflection &amp; evidence channel"]
-        VROL["<b>VROL</b><br/>[External Software System]<br/>Visa Resolve Online<br/>runs the VCR programme"]
-        MCOM["<b>MCOM</b><br/>[External Software System]<br/>Mastercom<br/>runs the MDR programme"]
-    end
-
-    subgraph OTHER["OTHER SYSTEMS"]
-        direction LR
+    subgraph ISSUER["ISSUER — our organisation · this diagram is drawn from this point of view"]
+        direction TB
+        CU["Customer<br/>[Person]<br/>Cardholder raising a dispute"]
+        BO["Issuer BackOffice Team<br/>[Person]<br/>Contact centre · disputes analyst"]
+        DRP["ISSUER DISPUTE RESOLUTION PLATFORM (DRP)<br/>[Software System — IN SCOPE]<br/>intake · case lifecycle · rules · evidence ·<br/>postings · timers · scheme adapters"]
         subgraph ISSOWN["Issuer-controlled / provided"]
             direction LR
-            CBK["<b>Core Banking</b><br/>[External Software System]<br/>Ledger · CIF · cards"]
-            FRD["<b>Fraud Platform</b><br/>[External Software System]<br/>Scoring &amp; fraud cases"]
-            TV["<b>Token Vault</b><br/>[External Software System]<br/>PCI CDE"]
+            CBK["Core Banking<br/>[External System]<br/>Ledger · CIF · cards"]
+            FRD["Fraud Platform<br/>[External System]<br/>Scoring &amp; fraud cases"]
+            TV["Token Vault<br/>[External System]<br/>PCI CDE"]
         end
         subgraph THIRD["Third-party controlled / provided"]
             direction LR
-            SW["<b>Payment Switch</b><br/>[External Software System]<br/>Auth &amp; settlement records"]
-            CLD["<b>Cloud Provider</b><br/>[External Software System]<br/>AWS — hosting &amp; managed services"]
+            SW["Payment Switch<br/>[External System]<br/>Auth &amp; settlement records"]
+            CLD["Cloud Provider<br/>[External System]<br/>hosting and managed services"]
         end
     end
 
-    CU -->|"Scenario 1 — raises dispute via web form"| PLAT
-    CU -->|"Scenario 2 — calls phone banking"| BO
-    BO -->|"Manages claims &amp; adjudicates [UI · SSO]"| PLAT
+    subgraph SCHEMES["CARD SCHEMES — external · the ONLY channel between issuer and acquirer"]
+        direction TB
+        VROL["VROL<br/>[External System]<br/>Visa Resolve Online · runs VCR<br/>REST API + bulk file"]
+        MCOM["MCOM<br/>[External System]<br/>Mastercom · runs MDR<br/>REST API + bulk file"]
+    end
 
-    AC -->|"Works the case in the VROL portal [UI]"| VROL
-    AC -->|"Works the case in the Mastercom portal [UI]"| MCOM
-    ME -->|"Most merchants respond via their acquirer"| AC
-    AC -.->|"Deflection &amp; evidence [mTLS]"| PAI
-    ME -.->|"Deflection &amp; evidence [mTLS]"| PAI
+    subgraph ACQSIDE["ACQUIRING SIDE — external · OUT OF OUR INTEGRATION SCOPE"]
+        direction TB
+        ADS["Acquirer Dispute System<br/>[External System]<br/>e.g. Pega Smart Dispute for Acquirers,<br/>or in-house / third-party platform"]
+        ACQ["Acquirer Ops<br/>[Person]"]
+        MER["Merchant<br/>[Person]"]
+    end
 
-    PLAT -->|"Partner case views + webhooks"| PAI
-    PLAT ==>|"Dispute · pre-arb · arbitration<br/>[REST — API only, NO UI]"| VROL
-    PLAT ==>|"Chargeback · 2nd presentment · pre-arb<br/>[REST / SFTP — API only, NO UI]"| MCOM
+    CU -->|"Scenario 1 — raises dispute<br/>via web form"| DRP
+    CU -->|"Scenario 2 — calls<br/>phone banking"| BO
+    BO -->|"Raises &amp; adjudicates cases<br/>[UI · corporate SSO]"| DRP
 
-    PLAT ==>|"Postings"| CBK
-    PLAT ==>|"Fraud assessment"| FRD
-    PLAT ==>|"cardRef → account range"| TV
-    PLAT ==>|"Transaction lookup"| SW
-    PLAT -.->|"Runs on"| CLD
+    DRP ==>|"1 · CALL — we initiate<br/>raise dispute · pre-arb response · arbitration<br/>[REST, per case, on decision]"| VROL
+    VROL ==>|"2 · POLL — we retrieve<br/>dispute response · pre-arb · arbitration · rulings<br/>[scheduled poll, fetch + acknowledge]"| DRP
+    DRP ==>|"1 · CALL — we initiate<br/>chargeback · pre-arb · arbitration<br/>[REST / SFTP, per case]"| MCOM
+    MCOM ==>|"2 · POLL — we retrieve<br/>2nd presentment · pre-arb · rulings<br/>[scheduled poll, fetch + acknowledge]"| DRP
+
+    ADS -.->|"files dispute response,<br/>pre-arbitration, arbitration<br/>THEIR integration — not ours"| VROL
+    ADS -.->|"files 2nd presentment,<br/>pre-arbitration<br/>THEIR integration — not ours"| MCOM
+    ACQ -->|"works the case<br/>[their UI]"| ADS
+    MER -->|"responds via acquirer,<br/>or merchant portal"| ADS
+
+    DRP ==>|"Postings — provisional credit,<br/>final credit, write-off"| CBK
+    DRP ==>|"Fraud assessment"| FRD
+    DRP ==>|"cardRef to account range<br/>[PCI, adapter only]"| TV
+    DRP ==>|"Transaction lookup"| SW
+    DRP -.->|"Runs on"| CLD
 
     classDef person  fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
     classDef inScope fill:#1061B0,color:#FFFFFF,stroke:#0A3D6B,stroke-width:4px
-    classDef ours    fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:2px
     classDef visa    fill:#1A1F71,color:#FFFFFF,stroke:#F7B600,stroke-width:3px
     classDef mcard   fill:#CF0A2C,color:#FFFFFF,stroke:#F79E1B,stroke-width:3px
     classDef ext     fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
-    class CU,BO,AC,ME person
-    class PLAT inScope
-    class PAI ours
+    classDef acq     fill:#6C757D,color:#FFFFFF,stroke:#495057,stroke-width:2px,stroke-dasharray:6 4
+    class CU,BO,ACQ,MER person
+    class DRP inScope
     class VROL visa
     class MCOM mcard
     class CBK,FRD,TV,SW,CLD ext
+    class ADS acq
 
     linkStyle default stroke:#54606C,stroke-width:1.5px
 ```
 
-*Colour and line-style key: [§0.11 Diagram conventions](#011-diagram-conventions--the-shared-legend).*
+*Colour and line-style key: [§0.11](#011-diagram-conventions--the-shared-legend).*
 
-#### 7.1.1 The four things this diagram asserts
+#### 7.1.1 The two integration patterns to each scheme
 
-1. **Acquirer and Merchant do not work disputes in our platform.** They work them in **VROL's and Mastercom's own portals**. The scheme relays the result to us machine-to-machine. This is the single most important boundary on the page.
-2. **PAI is a secondary channel, not the door.** It exists for **deflection and evidence** — letting a merchant accept or defend before a network cycle is consumed. A partner who never touches PAI still participates fully in every dispute via the scheme.
-3. **VROL and MCOM have no UI relationship with us.** They have excellent UIs; our platform never renders or embeds them. Analysts may hold separate scheme logins for exception handling — that is a *different system*, not a feature of ours.
-4. **Two intake scenarios, one platform.** Scenario 1 is customer self-service; Scenario 2 is assisted, through the contact centre. They converge after intake.
+| | **1 · CALL** — we initiate | **2 · POLL** — we retrieve |
+|---|---|---|
+| Trigger | A case decision | A schedule |
+| Shape | Synchronous, **per case** | Batch fetch of our pending queue, then **acknowledge** |
+| Carries | Dispute · pre-arbitration · arbitration · appeal · evidence | Responses · pre-arbitration · rulings · fees |
+| Reliability | Outbox, per-case ordering, idempotency, journal before transmit | Persist raw **before** queueing; acknowledge **only after** commit |
+| Whose clock | **Ours** — the time bar is ours to burn | Theirs — 30–45 day windows |
 
-> **Correction from an earlier draft.** This diagram previously showed Acquirer and Merchant reaching the platform *only* through PAI, and labelled them "No direct access". That overstated PAI: it modelled a proposed deflection channel as the primary partner path, when in reality the scheme rails are. Decision **D5** and §8.1 are restated accordingly.
+Full detail in [§8](#8-scheme-integration--the-four-flows).
 
-### 7.2 Level 2 — Containers inside "Claims"
+#### 7.1.2 The four things this diagram asserts
+
+1. **The scheme is the only channel between issuer and acquirer.** Every inbound fact arrives because we asked a scheme for it.
+2. **The acquirer runs its own dispute system** — a vendor product, an in-house build, or a third party. Its integration to the schemes is real but **out of our scope**: we neither build nor operate it.
+3. **We rely entirely on the scheme APIs.** No contract with the acquirer, no SLA over their system, no visibility into how they work.
+4. **Two intake scenarios, one platform** — self-service and assisted. They converge after intake.
+
+### 7.2 Level 2 — Containers
 
 ```mermaid
 flowchart TB
-    subgraph EDGE["Edge / Experience"]
-        WEB["Customer Web + Mobile<br/>[React / React Native]"]
-        OPS["Issuer Ops Workspace<br/>[React micro-frontends]"]
-        CBFF["customer-bff<br/>[Spring Boot / EKS]"]
-        OBFF["issuer-ops-bff<br/>[Spring Boot / EKS]"]
-        PBFF["partner-bff (PAI)<br/>[Spring Boot / EKS]"]
-        APIGW["API Gateway + WAF<br/>[AWS APIGW / ALB]"]
+    subgraph EDGE["Edge and experience"]
+        direction LR
+        WEB["Customer web and mobile"]
+        OPS["Issuer operations workspace"]
+        CBFF["Customer BFF"]
+        OBFF["Issuer-Ops BFF"]
+        PBFF["Partner gateway · optional"]
+        GW["API gateway + WAF<br/>mutual TLS for partners"]
     end
-
-    subgraph CORESVC["Core Domain Services"]
-        CIS["claim-intake-svc"]
-        DCS["dispute-case-svc<br/>+ Step Functions saga"]
-        DRS["dispute-rules-svc<br/>[DMN engine]"]
-        SRS["scheme-resolution-svc"]
-        NRS["network-router-svc"]
+    subgraph CORESVC["Core domain capabilities"]
+        direction LR
+        CIS["Claim intake"]
+        DCS["Dispute case<br/>+ saga orchestration"]
+        DRS["Eligibility and rules<br/>decision engine"]
+        SRS["Scheme resolution"]
+        NRS["Network routing<br/>outbox"]
     end
-
-    subgraph ADPT["Scheme Adapters (isolated, PCI-scoped)"]
-        MCA["mcom-adapter-svc"]
-        VRA["vrol-adapter-svc"]
+    subgraph ADPT["Scheme adapters — PCI-scoped, isolated"]
+        direction LR
+        MCA["Mastercard adapter<br/>Filer · Poller · Journal · ACL"]
+        VRA["Visa adapter<br/>Filer · Poller · Journal · ACL"]
     end
-
-    subgraph SUPSVC["Supporting Services"]
-        EVS["evidence-svc"]
-        FPS["financial-posting-svc"]
-        CTS["compliance-timer-svc"]
-        WAS["work-assignment-svc"]
-        CRS["correspondence-svc"]
+    subgraph ASSURE["Assurance"]
+        REC["Reconciliation<br/>independent query path"]
     end
-
+    subgraph SUPSVC["Supporting capabilities"]
+        direction LR
+        EVS["Evidence"]
+        FPS["Financial posting"]
+        CTS["Compliance and timers"]
+        WAS["Work assignment"]
+        CRS["Correspondence"]
+    end
     subgraph INTEG["Integration ACLs"]
-        TRS["transaction-retrieval-svc"]
-        PRS["party-reference-svc"]
-        FGS["fraud-gateway-svc"]
-        PGB["pega-bridge-svc<br/>(migration)"]
+        direction LR
+        TRS["Transaction retrieval"]
+        PRS["Party reference"]
+        FGS["Fraud gateway"]
+        PGB["Legacy bridge · migration"]
     end
-
-    subgraph DATA["Data & Platform"]
-        MSK[("MSK<br/>Event Backbone")]
-        AUR[("Aurora PostgreSQL<br/>per-service schemas")]
-        DDB[("DynamoDB<br/>BIN ranges, outbox, timers")]
-        S3[("S3<br/>evidence + audit")]
-        OS[("OpenSearch / Redshift<br/>read models")]
+    subgraph DATA["Data and platform"]
+        direction LR
+        BUS[("Event backbone")]
+        TX[("TX stores<br/>per capability")]
+        KV[("KV stores")]
+        OBJ[("Object storage<br/>evidence + audit")]
+        IDX[("Read models")]
     end
-
-    WEB --> APIGW --> CBFF
-    OPS --> APIGW --> OBFF
-    APIGW --> PBFF
-
+    WEB --> GW --> CBFF
+    OPS --> GW --> OBFF
+    GW --> PBFF
     CBFF --> CIS
     CBFF --> DCS
-    CBFF --> EVS
     OBFF --> DCS
     OBFF --> WAS
-    OBFF --> DRS
-    OBFF --> EVS
     PBFF --> DCS
-    PBFF --> EVS
-
     CIS --> TRS
     CIS --> PRS
     CIS --> SRS
-    CIS -->|ClaimAccepted| MSK
-    MSK --> DCS
-
+    CIS ==> BUS
+    BUS ==> DCS
     DCS --> DRS
     DCS --> FGS
     DCS --> NRS
     DCS --> FPS
     DCS --> CTS
     DCS --> EVS
-    DCS -->|events| MSK
-    MSK --> WAS
-    MSK --> CRS
-    MSK --> OS
-
-    NRS --> MCA
-    NRS --> VRA
-    MCA -->|responses| MSK
-    VRA -->|responses| MSK
-
-    CIS --- AUR
-    DCS --- AUR
-    DRS --- AUR
-    FPS --- AUR
-    WAS --- AUR
-    SRS --- DDB
-    NRS --- DDB
-    CTS --- DDB
-    EVS --- S3
-    MCA --- S3
-    VRA --- S3
-
-    PGB --- MSK
-
-    classDef exp fill:#a8dadc,color:#000
-    classDef core fill:#0d3b66,color:#fff
-    classDef adpt fill:#f4a261,color:#000
-    classDef sup fill:#457b9d,color:#fff
-    classDef integ fill:#adb5bd,color:#000
-    classDef data fill:#e9c46a,color:#000
-    class WEB,OPS,CBFF,OBFF,PBFF,APIGW exp
+    DCS ==> BUS
+    BUS ==> WAS
+    BUS ==> CRS
+    BUS ==> IDX
+    NRS ==> MCA
+    NRS ==> VRA
+    MCA ==> BUS
+    VRA ==> BUS
+    REC -.-> DCS
+    REC ==> WAS
+    CIS --- TX
+    DCS --- TX
+    DRS --- TX
+    FPS --- TX
+    WAS --- TX
+    REC --- TX
+    SRS --- KV
+    NRS --- KV
+    CTS --- KV
+    EVS --- OBJ
+    MCA --- OBJ
+    VRA --- OBJ
+    PGB --- BUS
+    classDef exp fill:#A8DADC,color:#000000,stroke:#457B9D,stroke-width:2px
+    classDef core fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef adpt fill:#F4A261,color:#000000,stroke:#C1440E,stroke-width:2px
+    classDef newbc fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:3px
+    classDef sup fill:#457B9D,color:#FFFFFF,stroke:#1D3557,stroke-width:2px
+    classDef integ fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
+    classDef data fill:#E9C46A,color:#000000,stroke:#C9971A,stroke-width:2px
+    class WEB,OPS,CBFF,OBFF,PBFF,GW exp
     class CIS,DCS,DRS,SRS,NRS core
     class MCA,VRA adpt
+    class REC newbc
     class EVS,FPS,CTS,WAS,CRS sup
     class TRS,PRS,FGS,PGB integ
-    class MSK,AUR,DDB,S3,OS data
+    class BUS,TX,KV,OBJ,IDX data
+    linkStyle default stroke:#54606C,stroke-width:1.5px
 ```
 
-### 7.3 Level 3 — Components inside `dispute-case-svc` (the core aggregate)
+**Note the adapters and reconciliation reach the scheme independently.** That separation is D12; drawing them as one path would be drawing the bug.
 
-```mermaid
-flowchart TB
-    subgraph DCS["dispute-case-svc"]
-        API["Case REST API<br/>[Spring MVC]<br/>commands + queries"]
-        CONS["Event Consumers<br/>[Kafka listeners]"]
-        APPL["Application Services<br/>OpenCase, AssessEligibility,<br/>Adjudicate, Escalate, Close"]
-        AGG["<b>DisputeCase Aggregate</b><br/>invariants + stage machine"]
-        SM["Stage Machine<br/>scheme-specific transition table"]
-        SAGA["Saga Coordinator<br/>[Step Functions client]"]
-        POL["Domain Policies<br/>ReopenPolicy, CyclePolicy,<br/>WithdrawalPolicy"]
-        REPO["CaseRepository<br/>[JPA + optimistic lock]"]
-        OUT["Transactional Outbox<br/>[same-tx insert]"]
-        PUB["Event Publisher<br/>[outbox relay → MSK]"]
-        ACLR["ACL: RulesTranslator<br/>scheme vocab → domain vocab"]
-        ACLF["ACL: FraudTranslator"]
-        PORT["Ports: NetworkPort,<br/>PostingPort, TimerPort,<br/>EvidencePort"]
-    end
-
-    API --> APPL
-    CONS --> APPL
-    APPL --> AGG
-    AGG --> SM
-    AGG --> POL
-    APPL --> SAGA
-    APPL --> REPO
-    REPO --> OUT
-    OUT --> PUB
-    APPL --> ACLR
-    APPL --> ACLF
-    APPL --> PORT
-
-    DB[("Aurora PG<br/>case, case_event,<br/>outbox")]
-    REPO --- DB
-    OUT --- DB
-
-    RULES["dispute-rules-svc"]
-    FRAUD["fraud-gateway-svc"]
-    NET["network-router-svc"]
-    FIN["financial-posting-svc"]
-    TIM["compliance-timer-svc"]
-    EVD["evidence-svc"]
-    MSKX[("MSK")]
-
-    ACLR --> RULES
-    ACLF --> FRAUD
-    PORT --> NET
-    PORT --> FIN
-    PORT --> TIM
-    PORT --> EVD
-    PUB --> MSKX
-
-    classDef c fill:#0d3b66,color:#fff
-    classDef acl fill:#e76f51,color:#fff
-    classDef ext fill:#adb5bd,color:#000
-    class API,CONS,APPL,AGG,SM,SAGA,POL,REPO,OUT,PUB,PORT c
-    class ACLR,ACLF acl
-    class RULES,FRAUD,NET,FIN,TIM,EVD,MSKX,DB ext
-```
-
-### 7.4 Level 3 — Components inside `mcom-adapter-svc` (the ACL in detail)
+### 7.3 Level 3 — Inside a scheme adapter
 
 ```mermaid
 flowchart LR
-    subgraph MCA["mcom-adapter-svc — PCI-scoped subnet"]
-        LSN["Command Listener<br/>[SQS FIFO per case]"]
-        IDEM["Idempotency Guard<br/>[DynamoDB]"]
-        TRN["<b>McomTranslator (ACL)</b><br/>canonical → Mastercom<br/>MDR reason codes,<br/>Case/Claim structures"]
-        PANR["PAN Resolver<br/>[Token Vault client]<br/>last-mile only"]
-        DOC["Document Packager<br/>[S3 → Mastercom doc API]"]
-        CLI["Mastercom API Client<br/>[OAuth/mTLS, retry, CB]"]
-        JRN["Message Journal<br/>[append-only, WORM]"]
-        INB["Inbound Poller / Webhook<br/>2nd presentment, rulings, fees"]
-        RTRN["<b>Response Translator (ACL)</b><br/>Mastercom → canonical"]
-        PUBM["Event Publisher → MSK"]
+    subgraph AD["Scheme adapter — PCI-scoped subnet"]
+        direction TB
+        LSN["Command listener<br/>ordered per case"]
+        IDEM["Idempotency guard"]
+        TRN["OUTBOUND ACL<br/>canonical to scheme"]
+        PANR["PAN resolver<br/>vault client · last mile only"]
+        DOC["Document packager"]
+        CLI["Scheme client<br/>auth · retry · circuit breaker"]
+        JRN[("Message journal<br/>append-only WORM")]
+        POLL["Poller<br/>scheduled fetch"]
+        ACK["Acknowledge<br/>AFTER commit only"]
+        RTRN["INBOUND ACL<br/>scheme to canonical"]
+        QUAR["Quarantine handler<br/>+ deadline-bearing work item"]
+        PUB["Event publisher"]
     end
+    SCHEME["Scheme API"]
+    VAULT["Token vault"]
+    OBJ[("Evidence store")]
+    BUS[("Event backbone")]
 
     LSN --> IDEM --> TRN --> PANR --> CLI
     TRN --> DOC --> CLI
     CLI --> JRN
-    INB --> RTRN --> PUBM
-    JRN --> PUBM
+    CLI <--> SCHEME
+    POLL <--> SCHEME
+    POLL --> JRN
+    JRN --> ACK
+    ACK --> RTRN
+    RTRN --> PUB
+    RTRN -.->|"unparseable"| QUAR
+    QUAR --> PUB
+    PUB ==> BUS
+    PANR <--> VAULT
+    DOC --- OBJ
 
-    MCOMAPI["Mastercom / MDR APIs"]
-    VAULTX["Token Vault"]
-    S3X[("S3 evidence")]
-
-    CLI <--> MCOMAPI
-    INB <--> MCOMAPI
-    PANR <--> VAULTX
-    DOC --- S3X
-
-    classDef c fill:#f4a261,color:#000
-    classDef acl fill:#e76f51,color:#fff
-    classDef ext fill:#adb5bd,color:#000
-    class LSN,IDEM,PANR,DOC,CLI,JRN,INB,PUBM c
+    classDef c fill:#F4A261,color:#000000,stroke:#C1440E,stroke-width:2px
+    classDef acl fill:#E76F51,color:#FFFFFF,stroke:#A63A22,stroke-width:2px
+    classDef ext fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
+    classDef store fill:#E9C46A,color:#000000,stroke:#C9971A,stroke-width:2px
+    class LSN,IDEM,PANR,DOC,CLI,POLL,ACK,QUAR,PUB c
     class TRN,RTRN acl
-    class MCOMAPI,VAULTX,S3X ext
+    class SCHEME,VAULT ext
+    class JRN,OBJ,BUS store
+    linkStyle default stroke:#54606C,stroke-width:1.5px
 ```
 
-**Why the ACL is drawn as two components (`McomTranslator` + `ResponseTranslator`):** the corruption risk is bidirectional. Mastercom's `Case`/`Claim` nouns, its fee structures, and its cycle naming must not travel inward; equally, our internal stage names must not leak outward into filings.
+**Two ACL components, because the corruption risk is bidirectional.** Scheme nouns, fee structures and cycle names must not travel inward; our internal stage names must not leak outward into filings.
+
+**The `JRN → ACK` edge is D11 drawn as a dependency.** The acknowledgement is physically downstream of the journal write — it cannot happen first.
 
 ---
 
-## 8. Part G — Persona journeys & the PAI (Partner API Interface)
+## 8. Scheme integration — the four flows
 
-### 8.1 Persona access model
+**This is the part of the architecture that determines whether the platform is trustworthy.** Everything else can be rebuilt from the case store; a scheme message lost here is gone permanently, and the deadline attached to it expires silently.
 
-| Persona | Access | Identity | Entry point | Trust level | Data visibility |
-|---|---|---|---|---|---|
-| **Customer** (cardholder) | Direct, authenticated digital banking, **or** unauthenticated web form (Scenario 1) | Cognito / bank IdP, step-up MFA for claim submission | `customer-bff` | Authenticated, low privilege | Own claims only; masked card; no network internals |
-| **Issuer BackOffice Team** (analyst / supervisor / QA) | Direct, corporate SSO | Corporate IdP (SAML/OIDC) + RBAC + ABAC on queue & amount | `issuer-ops-bff` | Trusted internal | Full case, subject to SoD (no self-approval of postings) |
-| **Acquirer** | **Primary: the scheme's own portal** (VROL / Mastercom) — *not our system*. **Secondary: PAI**, optional | Scheme credentials for the portal; OAuth2 client-credentials + mTLS for PAI | Scheme portal · `partner-bff` | Semi-trusted external | Via scheme: whatever the scheme shows. Via PAI: only cases where their acquirer ID is a party |
-| **Merchant** | **Primary: via their acquirer**, or a scheme portal if they hold direct access. **Secondary: PAI**, optional | Delegated by acquirer, or scheme credentials; OAuth2 + mTLS for PAI | Acquirer · scheme portal · `partner-bff` | Least-trusted external | Only cases against their own merchant ID(s); no cardholder PII beyond scheme minimum |
+"Integrating with the scheme" is not one thing. It is four flows with different triggers, different failure modes and different runbooks.
 
-**Two access questions, often confused:**
+| | **1 · FILE** | **2 · POLL** | **3 · FAN-OUT** | **4 · RECONCILE** |
+|---|---|---|---|---|
+| **Trigger** | A case decision | A schedule | A poll result | A schedule |
+| **Direction** | Outbound, synchronous | Inbound, batch | Internal | Outbound query |
+| **Granularity** | One case | Many cases | One case | One case |
+| **Whose clock** | **Ours** — the time bar is ours to burn | Theirs — 30–45 day windows | Ours | Ours |
+| **Worst failure** | Double filing, or a burnt time bar | **Silent permanent message loss** | A poison record blocking good work | *(this flow is the detector)* |
+| **Owner** | BC-4 routing + adapter Filer | BC-4 adapter Poller | BC-4 adapter ACL + BC-2 | **BC-17** |
+
+```mermaid
+flowchart TB
+    subgraph BC2["BC-2 · Dispute Case Management"]
+        DCS["Dispute case capability<br/>aggregate · stage machine · saga"]
+    end
+    subgraph BC4["BC-4 · Network Exchange"]
+        direction TB
+        NR["Network routing<br/>OUTBOX · per-case ordering<br/>strategy dispatch by scheme"]
+        subgraph AD["Scheme adapter — one deployable per scheme"]
+            direction LR
+            FIL["FILER · outbound<br/>ACL out · idempotency key<br/>journal BEFORE transmit"]
+            POL["POLLER · inbound<br/>scheduled fetch · persist raw<br/>acknowledge AFTER commit"]
+            JRN[("Scheme journal<br/>raw payloads · WORM<br/>never leaves the adapter")]
+            ACLIN["RESPONSE ACL<br/>scheme to canonical<br/>one event per case"]
+        end
+    end
+    subgraph BC17["BC-17 · Reconciliation and Assurance"]
+        REC["Reconciliation capability<br/>independent comparison<br/>never mutates a case"]
+    end
+    SCHEME["VROL / MCOM<br/>card scheme"]
+    BUS[("Event backbone")]
+    WA["Work assignment<br/>human queue"]
+
+    DCS -->|"SubmitNetworkCycle"| NR
+    NR ==>|"ordered per case<br/>MessageGroup = caseId"| FIL
+    FIL ==>|"1 · FILE"| SCHEME
+    FIL --- JRN
+    SCHEME ==>|"2 · POLL<br/>fetch then acknowledge"| POL
+    POL --- JRN
+    POL --> ACLIN
+    ACLIN ==>|"3 · FAN-OUT<br/>one canonical event per case"| BUS
+    BUS ==>|"per-case consumer"| DCS
+    REC -.->|"4 · RECONCILE<br/>independent query path"| SCHEME
+    REC -.->|"reads case state · never writes"| DCS
+    REC ==>|"DivergenceDetected"| WA
+
+    classDef core fill:#0D3B66,color:#FFFFFF,stroke:#092845,stroke-width:2px
+    classDef adapter fill:#F4A261,color:#000000,stroke:#C1440E,stroke-width:2px
+    classDef newbc fill:#2A9D8F,color:#FFFFFF,stroke:#1D7A6F,stroke-width:3px
+    classDef ext fill:#8C8C8C,color:#FFFFFF,stroke:#6C6C6C,stroke-width:2px
+    classDef store fill:#E9C46A,color:#000000,stroke:#C9971A,stroke-width:2px
+    class DCS,NR core
+    class FIL,POL,ACLIN adapter
+    class REC newbc
+    class SCHEME,WA ext
+    class JRN,BUS store
+    linkStyle default stroke:#54606C,stroke-width:1.5px
+```
+
+### 8.1 The adapter's internal structure
+
+One deployable per scheme, four named components. They share the scheme contract, credentials and certification — so they ship together — but they have different SLAs, so they are named, monitored and paged separately.
+
+| Component | Responsibility | Fails when |
+|---|---|---|
+| **Filer** | Canonical → scheme translation, PAN dereference at the last moment, idempotency guard, journal before transmit, circuit breaker | The scheme is down, or a filing is rejected |
+| **Poller** | Scheduled fetch of our institution's pending queue, persist raw, acknowledge after commit | The scheme is down, or — worse — we acknowledge and then crash |
+| **Journal** | Append-only WORM record of every raw payload in both directions | Storage failure. This is the evidence store; it is never truncated |
+| **Response ACL** | Scheme → canonical translation, one event per case | The scheme changes its schema without notice |
+
+> **D13 in practice: the journal sits inside the adapter.** A shared raw-message store across adapters would put Mastercom vocabulary outside the anti-corruption layer, which is precisely the coupling D4 exists to prevent. Raw goes in; canonical comes out.
+
+### 8.2 Flow 1 · FILE — we initiate
+
+Triggered by a case decision: raise the dispute, respond to a pre-arbitration, escalate to arbitration, file an appeal.
+
+```
+case decision
+  → write command + outbox row in ONE transaction
+  → outbox relay publishes to an ordered per-case queue
+  → Filer: idempotency check on (caseId, cycle, messageType)
+  → journal the outbound payload BEFORE transmitting
+  → transmit, with circuit breaker and rate limit
+  → journal the acknowledgement, publish NetworkMessageSent
+```
+
+**Required properties**
+
+| Property | Why |
+|---|---|
+| **Outbox in the same transaction as the decision** | A decision that commits without its command is a case that silently stops |
+| **Ordered per case** | Cycle 2 must not overtake cycle 1. Ordering *across* cases is irrelevant |
+| **Idempotent on `(caseId, cycle, messageType)`** | A retry after a socket timeout must not file twice. A duplicate filing consumes a cycle the scheme will reject |
+| **Journal before transmit** | If the response is lost, we still know what we sent |
+| **Time-bar-aware dead-lettering** | A failed submission is not just an ops incident — it burns a regulatory clock. If the remaining time bar is below threshold, escalate to a human immediately rather than exhausting the retry budget |
+
+### 8.3 Flow 2 · POLL — we retrieve
+
+The highest-risk flow in the platform. Scheme queues are **acknowledge-based**: unacknowledged items redeliver, acknowledged items are gone.
+
+```
+scheduled trigger
+  → fetch our institution's pending queue items
+  → persist each raw item, one row per case         ← D11 step 1
+  → COMMIT                                           ← D11 step 2
+  → acknowledge to the scheme                        ← D11 step 3
+  → fan out (flow 3)
+```
+
+> **The ordering of steps 2 and 3 is the single most consequential line in this document.** Acknowledge before the commit and a crash discards the scheme's message permanently — no local copy, and no way to request it again. Under Visa's response certification, a missed response deadline **is** acceptance of liability.
+
+| Property | Why |
+|---|---|
+| **Persist raw, one row per case** | The grain is the message, not the poll. A batch-grained row cannot carry a correlation ID, a message type or a per-case status |
+| **Acknowledge only after commit** | See above |
+| **Unique index on the scheme correlation ID** | The scheme queue is at-least-once by design. You *will* see the same case twice |
+| **Poll frequency derived from the tightest active time bar** | "Batch" is not a frequency. A daily cycle burns a day per hop; across four cycles that is meaningful against a 30-day window |
+| **Both transports supported** | Schemes offer synchronous APIs *and* bulk file. Case state suits the API; evidence documents suit the file transport |
+
+### 8.4 Flow 3 · FAN-OUT — one case, one message, one retry unit
+
+```
+persisted rows
+  → one lightweight message per case (a reference, not the payload)
+  → independent consumer per message
+  → advance the case
+```
+
+**Never batch multiple cases into one message.** The retry unit must equal the failure unit:
+
+| | One message per case | A batch in one message |
+|---|---|---|
+| Case 47 fails | Only case 47 retries | **All 100 reprocess** |
+| The 46 already processed | Untouched | Reprocessed on every retry |
+| Diagnostics | "case 47 broken" | "1 broken item" — which one? |
+| Parallelism | Across partitions | Serial |
+| Time bars | One case blocked | **100 deadlines blocked** |
+
+**Quarantine, for records that cannot be processed at all:**
+
+| Rule | Detail |
+|---|---|
+| Use a **quarantine status of our own**, never a scheme reason code | Two vocabularies must not mix |
+| Persist the raw payload regardless | It is the evidence, parseable or not |
+| **Acknowledge to the scheme anyway** | Otherwise it redelivers and fails identically, forever |
+| **Raise a work item carrying the original deadline** | A quarantined case still has a running time bar. This is the step that costs money if skipped |
+
+> **Distinguish one bad record from a scheme release.** One case failing is a data problem. *Many cases failing the same way* is a schema change — an engineering incident, not a hundred independent data errors. The quarantine handler must alert differently for the two.
+
+### 8.5 Flow 4 · RECONCILE
+
+Covered in [§9](#9-reconciliation--assurance). In summary: it queries the scheme **through a different path** than the poller, compares against case state, and raises divergences without ever mutating a case.
+
+### 8.6 What each scheme requires that the other does not
+
+| Concern | Visa | Mastercard |
+|---|---|---|
+| Workflow split | **Allocation vs Collaboration** — determines who files pre-arbitration | None |
+| Filing party at pre-arbitration | **Acquirer** in Allocation, issuer in Collaboration | Issuer, always |
+| Skipped stage | Allocation has **no** response stage — `FIRST → PRE_ARB` is valid | Every cycle present |
+| Pre-arbitration mandatory? | Yes, both workflows | Generally, but **optional** for some categories |
+| Structured evidence | Compelling-evidence fields, machine-evaluable | Documents only |
+| Amount rules | No published amount ladder | **Non-increasing chain enforced at every cycle** |
+| Fund position after a decline | Allocation: stays with issuer · Collaboration: returns to acquirer | Returns to acquirer |
+| Missing a deadline means | **Acceptance of liability** | Loss of the cycle |
+
+Every one of these is absorbed by the adapter. None reaches BC-2.
+
+---
+
+## 9. Reconciliation & assurance
+
+### 9.1 Why this is a bounded context and not a feature
+
+Flows 1 to 3 can all fail **silently**. A filing that never landed, a message acknowledged and lost, a quarantined record nobody worked, a schema change that turned twenty fields into nulls — none of these raise an error at the time. They surface weeks later as an expired time bar and an unrecoverable loss.
+
+**Reconciliation is the only capability whose job is to distrust the others.** That is why it is a separate context:
+
+| Property | Consequence |
+|---|---|
+| It must query the scheme **through a different code path** than the poller | A reconciler sharing the poller's client, mapping and assumptions cannot detect the poller's bugs — it would agree with them |
+| It has a **different ubiquitous language** — divergence, drift, coverage, assurance window | These words mean nothing to a case handler |
+| It has **different consumers** — operations, risk, audit | Not the person working the case |
+| It has a **different release cadence** | It changes when controls change, not when the domain changes |
+| It **must not fix anything** | See §9.4 |
+
+### 9.2 The model
+
+| Aggregate | Holds |
+|---|---|
+| **`ReconciliationRun`** | Scope, window, start and end, cases examined, divergences found, coverage achieved. Immutable once complete |
+| **`Divergence`** | The case, the discrepancy class, our state, the scheme's state, when detected, remediation status. **Permanent** — retained after remediation |
+
+### 9.3 Discrepancy classes
+
+Each class has a distinct root cause and a distinct runbook. Classifying at detection is what makes the output actionable rather than a list of anomalies.
+
+| Class | Meaning | Usual root cause |
+|---|---|---|
+| **MISSING_INBOUND** | The scheme has an event we never recorded | The acknowledge-before-commit window (§8.3), or a scheme-side drop |
+| **MISSING_OUTBOUND** | We believe we filed; the scheme has no record | Lost filing, or a silently rejected submission |
+| **STATE_DRIFT** | Both sides know the case; the stage or cycle disagrees | A missed event, or an out-of-order transition |
+| **AMOUNT_DRIFT** | The disputed or ruled amount disagrees | Partial acceptance mishandled, or FX applied differently |
+| **DEADLINE_DRIFT** | The response deadline disagrees | Ruleset version mismatch, or a scheme release |
+| **FUND_POSITION_DRIFT** | We disagree on who holds the disputed funds | Workflow misclassification — Allocation treated as Collaboration |
+| **ORPHANED** | The scheme has a case we cannot correlate at all | Correlation ID lost or never persisted |
+| **SCHEMA_UNRECOGNISED** | The scheme sent a field or enum we do not understand | **A scheme release.** Many at once means an incident, not a data problem |
+
+### 9.4 The invariant that makes it trustworthy
+
+> **Reconciliation never mutates a case.** It emits `DivergenceDetected` and raises a work item.
+
+This is deliberate and worth defending. An auto-healing reconciler that quietly re-applies missing events would:
+
+- **hide the defect** that caused the divergence, so it recurs forever
+- **mask a control failure** that an auditor is entitled to see
+- risk **compounding** the error if its own view is the wrong one
+- destroy its value as evidence — a control that fixes things cannot also attest to them
+
+The correct behaviour is to make the divergence loud, attributable and permanent. Remediation is a **human decision recorded against the divergence**, not a side effect.
+
+### 9.5 Coverage — the metric that matters
+
+A reconciliation capability that runs but examines the wrong cases is worse than none, because it manufactures false confidence.
+
+| Metric | Target |
+|---|---|
+| **Coverage** — open cases reconciled within the assurance window | 100% of cases with an active time bar |
+| **Detection lag** — divergence occurrence to detection | Materially shorter than the shortest active deadline |
+| **Divergence rate by class** | Trended. A step change in `SCHEMA_UNRECOGNISED` is a scheme release |
+| **Remediation lag** | Detection to human resolution |
+| **False-positive rate** | High values mean the comparison logic is wrong and will be ignored |
+
+**Prioritise by deadline, not by age.** A case with three days of time bar left matters more than one filed three months ago with ninety days remaining.
+
+### 9.6 What it needs from the schemes
+
+Single-case retrieval by scheme case ID — the state query, not the queue fetch. This is the endpoint that gives an independent view, and it is a **different endpoint from the one the poller uses**. If a scheme offers only queue-based retrieval, reconciliation degrades to comparing our journal against our case store, which detects flow-3 failures but not flow-2 losses.
+
+> **Open question for the scheme licences:** confirm both schemes expose single-case state retrieval, and that it is not rate-limited below what full coverage of open cases requires.
+
+---
+
+## 10. Personas, journeys & partner access
+
+### 10.1 Who actually uses this platform
+
+| Persona | Uses this platform? | How they participate in a dispute |
+|---|---|---|
+| **Cardholder** | **Yes** — self-service, authenticated or unauthenticated | Raises the claim, supplies evidence, receives outcomes |
+| **Issuer BackOffice Team** | **Yes** — corporate SSO | Raises on behalf, investigates, adjudicates, works quarantine and divergence queues |
+| **Acquirer** | **No** | Through **their own dispute system**, against the scheme. Optionally reaches us via the partner gateway for deflection |
+| **Merchant** | **No** | Through their acquirer, or a scheme portal if they hold direct access. Optionally via the partner gateway |
+
+**Two access questions, routinely confused:**
 
 | Question | Answer |
 |---|---|
-| How does an acquirer *participate in a dispute*? | Through **VROL / Mastercom**. That is the system of record for the filing, and it works with or without us. |
-| How does an acquirer *reach our platform*? | Only through **PAI** — and only if they choose to. It is optional. |
+| How does an acquirer *participate in a dispute*? | Through the scheme. That is the system of record for the filing, and it works whether or not we exist |
+| How does an acquirer *reach our platform*? | Only through the partner gateway — and only if they choose to. It is optional |
 
-**Design principle for PAI:** the acquirer/merchant view is a **projection**, not the case aggregate. `partner-bff` never returns the internal case model. It returns a `PartnerCaseView` — a deliberately narrower published language with its own lifecycle vocabulary (*Received → Awaiting Response → Response Submitted → Decided*), which stays stable even when internal stages change.
+### 10.2 Access matrix
 
-**Why PAI is worth building even though it is optional:** a merchant who accepts liability through PAI *before* the cycle is sent saves the filing fee, the analyst time and the time bar. That is the cheapest possible outcome (see the lifecycles doc §3.1, stage 2 — pre-dispute). PAI is a cost-avoidance channel, not an access requirement.
+| | Claim Intake | Dispute Case | Rules | Network Exchange | Evidence | Financial Posting | Work Assignment | Timers | Reconciliation |
+|---|---|---|---|---|---|---|---|---|---|
+| **Cardholder** | Create, read own | Read own, simplified | Read filtered options | ✗ | Create, read own | Read credit status | ✗ | Read deadlines | ✗ |
+| **Issuer BackOffice** | Read all | Full, RBAC-gated | Read + propose change | Read + trigger | Full | Request, four-eyes above threshold | Full | Read | Read + remediate |
+| **Acquirer** *(optional gateway)* | ✗ | Scoped projection only | Reference only | ✗ | Create + read own | ✗ | ✗ | Read own deadline | ✗ |
+| **Merchant** *(optional gateway)* | ✗ | Scoped projection, own MID | Reference only | ✗ | Create + read own | ✗ | ✗ | Read own deadline | ✗ |
 
-### 8.2 Journey 1 — Customer raises a dispute (happy path, Mastercard e-commerce fraud)
+**Design principle for the partner view:** it is a **projection**, not the case aggregate. The partner gateway never returns the internal case model — it returns a deliberately narrower published language with its own vocabulary, which stays stable when internal stages change.
+
+### 10.3 Journey 1 — Customer raises a dispute (happy path, Mastercard e-commerce fraud)
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor CU as Customer
     participant APP as Web/Mobile
-    participant BFF as customer-bff
-    participant CI as claim-intake-svc
+    participant BFF as Customer BFF
+    participant CI as Claim intake
     participant TR as transaction-retrieval-svc
     participant SR as scheme-resolution-svc
     participant DC as dispute-case-svc
@@ -1228,7 +1550,7 @@ sequenceDiagram
     DC--)APP: status "Sent to merchant's bank"
 ```
 
-### 8.3 Journey 2 — Acquirer / Merchant respond via PAI (second presentment)
+### 10.4 Journey 2 — Acquirer / Merchant respond via PAI (second presentment)
 
 The journey that makes the partner boundary concrete: *acquirer and merchant never get a UI in our platform*. **Path A is how this normally happens** — the acquirer works the case in the scheme's own portal and the scheme relays it to us. **Path B is the optional PAI channel** that can pre-empt Path A.
 
@@ -1275,7 +1597,7 @@ sequenceDiagram
 
 **Two paths, one case.** Path A is authoritative (the scheme is the system of record for the filing). Path B is *pre-emptive* — it lets a merchant accept or defend before the network cycle is consumed, which is how deflection programmes (RDR/CDRN-style, Order Insight, Consumer Clarity) reduce chargeback volume. `dispute-case-svc` reconciles the two: **a Path B response never overrides a Path A network fact**; it can only pre-empt an unsent cycle or supply evidence.
 
-### 8.4 Journey 3 — Issuer analyst adjudicates
+### 10.5 Journey 3 — Issuer analyst adjudicates
 
 ```mermaid
 sequenceDiagram
@@ -1310,197 +1632,7 @@ sequenceDiagram
 
 Note the pattern: **the UI never computes permitted actions.** `dispute-rules-svc` returns them. That is what allows the same workspace to handle Mastercard and Visa cases side by side with zero scheme branching in the front end — the same principle as D1.
 
-### 8.5 The PAI contract (Open Host Service)
-
-| Endpoint | Method | Purpose | Consumer |
-|---|---|---|---|
-| `/v1/disputes` | GET | List disputes scoped to the caller's acquirer/merchant IDs | Acquirer, Merchant |
-| `/v1/disputes/{ref}` | GET | `PartnerCaseView` | Acquirer, Merchant |
-| `/v1/disputes/{ref}/evidence` | POST | Upload compelling evidence (multipart, ≤ scheme limits) | Merchant, Acquirer |
-| `/v1/disputes/{ref}/response` | POST | `ACCEPT` \| `DEFEND` \| `REQUEST_INFO` | Merchant, Acquirer |
-| `/v1/disputes/{ref}/documents/{id}` | GET | Retrieve issuer-supplied documentation | Acquirer |
-| `/v1/webhooks/subscriptions` | POST/GET/DELETE | Manage event subscriptions | Acquirer |
-| `/v1/reference/reason-codes` | GET | Scheme reason codes + evidence requirements, effective-dated | All partners |
-| `/v1/health`, `/v1/openapi.json` | GET | Contract discovery | All partners |
-
-**Governance of the published language**
-
-- OpenAPI 3.1 + JSON Schema, semantic versioning, `/v1` … `/v2` coexist for a **12-month** deprecation window.
-- **Consumer-driven contract tests** (Pact) run in CI for the top partners; breaking a partner build blocks the release.
-- Webhook delivery: HMAC-SHA256 signature, timestamp + nonce replay protection, exponential retry to 24h, then DLQ + partner alert.
-- Per-partner rate limits and quotas at API Gateway; idempotency required on all POSTs (`Idempotency-Key` header).
-
-### 8.6 Persona → context access matrix
-
-| | Claim Intake | Dispute Case | Rules | Network Exchange | Evidence | Financial Posting | Work Assignment | Timers |
-|---|---|---|---|---|---|---|---|---|
-| **Customer** | Create, read own | Read own (simplified view) | Read (filtered options) | ✗ | Create, read own | Read (credit status only) | ✗ | Read (deadline display) |
-| **Issuer** | Read all | Full (RBAC-gated) | Read + propose rule change | Read + trigger | Full | Request (4-eyes above threshold) | Full | Read |
-| **Acquirer** *(via PAI)* | ✗ | `PartnerCaseView` only, scoped | Read reference only | ✗ | Create + read own submissions | ✗ | ✗ | Read response deadline |
-| **Merchant** *(via PAI)* | ✗ | `PartnerCaseView` only, own MID | Read reference only | ✗ | Create + read own submissions | ✗ | ✗ | Read response deadline |
-
----
-
-## 9. Part H — Network integration: MCOM & VROL
-
-### 9.1 Capability comparison driving the two-adapter decision
-
-Column headers name the **scheme**; the platform each is reached through is on the first row. See [§0.1](#01-the-three-layers-people-conflate).
-
-| Dimension | **MASTERCARD** | **VISA** |
-|---|---|---|
-| Platform (the system we integrate with) | **MCOM** — Mastercom | **VROL** — Visa Resolve Online |
-| Programme (the rulebook) | Mastercard Dispute Resolution (MDR) | Visa Claims Resolution (VCR) |
-| Cycles | 1st Chargeback → 2nd Presentment → Pre-Arbitration → Arbitration | Dispute (Allocation or Collaboration) → Pre-Arbitration → Arbitration |
-| Reason vocabulary | Message reason codes (4837, 4853, 4855, 4863, 4808…) | Dispute conditions (10.x fraud, 11.x auth, 12.x processing, 13.x consumer) |
-| Workflow split | Single flow, evidence-driven | **Allocation** (fraud/auth — Visa decides) vs **Collaboration** (processing/consumer) |
-| Pre-dispute tooling | Ethoca-style alerts, Consumer Clarity | Order Insight, Rapid Dispute Resolution, CE3.0 |
-| Doc transport | Mastercom document API / bulk file | VROL attachment API |
-| Integration modes | REST APIs + bulk file (SFTP) | REST APIs + bulk file |
-| Time bars | Typically 120 days from txn/expected-delivery (code-dependent) | 30/75/120 days by condition |
-
-These differ enough — especially **Allocation vs Collaboration**, which has no Mastercard analogue — that a single "network service" would be a false abstraction. The canonical model expresses **cycles and rights**; each adapter maps its scheme's shape into that.
-
-### 9.2 Canonical → scheme mapping (illustrative)
-
-| Canonical | Mastercom | VROL |
-|---|---|---|
-| `DisputeCycle.FIRST` | First Chargeback (MDR) | Dispute (Allocation or Collaboration) |
-| `DisputeCycle.SECOND` | Second Presentment | Dispute Response |
-| `DisputeCycle.PRE_ARB` | Pre-Arbitration | Pre-Arbitration |
-| `DisputeCycle.ARBITRATION` | Arbitration Case Filing | Arbitration |
-| `DisputeRight.reasonCode` | `messageReasonCode` | `disputeCondition` |
-| `EvidenceBundle` | Mastercom document set | VROL attachments (+ CE3.0 structured fields) |
-| `NetworkRuling` | Arbitration ruling + fees | Arbitration ruling + fees |
-
-### 9.3 Reliability pattern for every network call
-
-```mermaid
-flowchart LR
-    A["dispute-case-svc<br/>decision"] --> B["network-router-svc<br/>transactional outbox<br/>(DynamoDB)"]
-    B --> C["SQS FIFO<br/>MessageGroupId = caseId<br/>(strict order per case)"]
-    C --> D["scheme adapter"]
-    D --> E{"Idempotency<br/>guard"}
-    E -->|"already sent"| F["return prior result"]
-    E -->|"new"| G["Journal (WORM)<br/>BEFORE transmit"]
-    G --> H["Circuit breaker<br/>+ token-bucket rate limit"]
-    H --> I["Scheme API"]
-    I -->|"5xx / timeout"| J["Retry w/ jitter<br/>→ DLQ after N"]
-    J --> K["Ops alert +<br/>time-bar risk escalation"]
-    I -->|"2xx"| L["Journal response<br/>→ publish canonical event"]
-
-    classDef ok fill:#2a9d8f,color:#fff
-    classDef warn fill:#e76f51,color:#fff
-    class L,F ok
-    class J,K warn
-```
-
-**Time-bar-aware DLQ:** a failed submission is not just an ops incident — it burns a regulatory/scheme clock. The DLQ handler queries `compliance-timer-svc`; if the remaining time bar is under threshold, it escalates to a human queue immediately rather than waiting out the retry budget. This is a behaviour Pega implementations typically bolt on late; here it is a first-class design element.
-
----
-
-## 10. Part I — AWS deployment architecture
-
-```mermaid
-flowchart TB
-    subgraph INET["Internet"]
-        U1["Customer / Issuer browsers"]
-        U2["Acquirer / Merchant systems"]
-    end
-
-    subgraph AWS["AWS — Region (multi-AZ)"]
-        CF["CloudFront + WAF + Shield Adv"]
-        subgraph PUB["Public subnets"]
-            ALB["ALB / API Gateway<br/>(mTLS for PAI)"]
-            NAT["NAT Gateway"]
-        end
-        subgraph APPSUB["Private app subnets — EKS"]
-            NSCORE["Namespace: core<br/>claim-intake, dispute-case,<br/>rules, scheme-resolution, router"]
-            NSEXP["Namespace: experience<br/>customer-bff, ops-bff, partner-bff"]
-            NSSUP["Namespace: supporting<br/>evidence, posting, timers,<br/>work, correspondence"]
-            NSINT["Namespace: integration<br/>txn-retrieval, party-ref,<br/>fraud-gw, pega-bridge"]
-        end
-        subgraph PCISUB["Private PCI subnets — isolated"]
-            NSPCI["Namespace: pci<br/>mcom-adapter, vrol-adapter"]
-        end
-        subgraph DATASUB["Private data subnets"]
-            AUR[("Aurora PostgreSQL<br/>Multi-AZ, per-service DB")]
-            DDBX[("DynamoDB<br/>Global Tables")]
-            MSKX[("MSK (3 AZ)<br/>+ Schema Registry")]
-            EC[("ElastiCache Redis")]
-            OSX[("OpenSearch")]
-        end
-        SFN["Step Functions<br/>(dispute saga)"]
-        EBS["EventBridge Scheduler<br/>(regulatory timers)"]
-        S3X[("S3: evidence (SSE-KMS,<br/>Object Lock) + audit")]
-        SEC["Secrets Manager + KMS<br/>(CMK per data class)"]
-        RS[("Redshift + QuickSight")]
-        FH["Kinesis Firehose"]
-        OBS["CloudWatch + X-Ray +<br/>Managed Prometheus/Grafana"]
-    end
-
-    subgraph EXTNET["Scheme & bank networks"]
-        MCOMX["Mastercom"]
-        VROLX["VROL"]
-        CBKX["Core banking / switch<br/>(Direct Connect)"]
-        VLTX["Token Vault"]
-    end
-
-    U1 --> CF --> ALB --> NSEXP
-    U2 -->|mTLS| ALB
-    NSEXP --> NSCORE
-    NSCORE --> NSSUP
-    NSCORE --> NSINT
-    NSCORE --> NSPCI
-    NSCORE --- SFN
-    NSSUP --- EBS
-    NSCORE --- AUR
-    NSCORE --- DDBX
-    NSCORE --- MSKX
-    NSEXP --- EC
-    NSSUP --- S3X
-    NSPCI --- S3X
-    NSPCI -->|"PrivateLink /<br/>dedicated egress"| MCOMX
-    NSPCI -->|"PrivateLink /<br/>dedicated egress"| VROLX
-    NSPCI --> VLTX
-    NSINT -->|Direct Connect| CBKX
-    MSKX --> FH --> RS
-    MSKX --> OSX
-    NSCORE --- SEC
-    NSPCI --- SEC
-    APPSUB -.-> OBS
-    PCISUB -.-> OBS
-
-    classDef aws fill:#232f3e,color:#fff
-    classDef pci fill:#e63946,color:#fff,stroke-width:2px
-    classDef data fill:#e9c46a,color:#000
-    classDef net fill:#f4a261,color:#000
-    class CF,ALB,NAT,SFN,EBS,SEC,FH,OBS aws
-    class NSPCI,PCISUB pci
-    class AUR,DDBX,MSKX,EC,OSX,S3X,RS data
-    class MCOMX,VROLX,CBKX,VLTX net
-```
-
-### 10.1 Service-to-AWS mapping
-
-| Concern | AWS service | Note |
-|---|---|---|
-| Compute | **EKS** (Fargate for bursty adapters, managed nodegroups for steady core) | Namespace-per-tier with NetworkPolicy isolation |
-| Saga orchestration | **Step Functions** (Standard, 1-year max duration) | Matches dispute lifecycles that legitimately run 120+ days |
-| Event backbone | **MSK** + Glue Schema Registry | Avro, `FULL_TRANSITIVE` compatibility enforced in CI |
-| Ordered commands | **SQS FIFO**, `MessageGroupId = caseId` | Guarantees per-case ordering without global bottleneck |
-| Timers | **EventBridge Scheduler** + DynamoDB TTL journal | Replaces Pega SLA agents; scales to millions of open clocks |
-| Transactional data | **Aurora PostgreSQL** (per-service DB, IAM auth) | Blue/green for schema changes |
-| High-volume key/value | **DynamoDB** (BIN ranges, outbox, idempotency) | On-demand; Global Tables for DR |
-| Evidence | **S3** + Object Lock (compliance mode) + Macie scan | Retention = max(scheme, Reg E, local law) |
-| Secrets/keys | **Secrets Manager**, **KMS CMK per data classification** | Separate CMK for PCI zone |
-| Observability | CloudWatch, X-Ray, Managed Prometheus/Grafana | Trace ID propagated from BFF to scheme adapter |
-| Analytics | Firehose → S3 → **Redshift**, QuickSight, OpenSearch | CQRS read models |
-| DR | Warm standby in a second region; RPO 5 min / RTO 1 h for core, RPO 0 for the network journal | Journal is the reconciliation source of truth |
-
----
-
-## 11. Part J — Cross-cutting concerns & NFRs
+## 11. Cross-cutting concerns & NFRs
 
 ### 11.1 PCI-DSS scope containment
 
@@ -1510,7 +1642,7 @@ flowchart LR
         A["Web / mobile apps"]
         B["BFFs"]
         C["claim-intake, dispute-case,<br/>rules, evidence, posting,<br/>timers, work, correspondence"]
-        D["Event backbone (MSK)<br/>schema rule: no PAN field"]
+        D["Event backbone (the event backbone)<br/>schema rule: no PAN field"]
     end
     subgraph IN["PCI CDE — minimised"]
         E["scheme-resolution-svc<br/>(account range only, in-memory)"]
@@ -1535,12 +1667,12 @@ Three services in scope instead of an entire platform. This is the single larges
 | NFR | Target | How it is met |
 |---|---|---|
 | Claim submission latency (p95) | < 800 ms to `202 Accepted` | Async enrichment; intake commits only the claim |
-| Case query (p95) | < 300 ms | CQRS read model in OpenSearch |
-| Throughput | 50k claims/day sustained, 5x seasonal peak | HPA on EKS; SQS buffering |
+| Case query (p95) | < 300 ms | CQRS read model in the search index |
+| Throughput | 50k claims/day sustained, 5x seasonal peak | HPA on the container platform; the queue buffering |
 | Network submission SLA | 99.5% submitted within 1 business day of decision | Outbox + time-bar-aware DLQ |
 | Availability — intake & case | 99.95% | Multi-AZ, no single-AZ dependency |
 | Availability — adapters | 99.5% (bounded by scheme uptime) | Outbox absorbs scheme outages |
-| Durability of network journal | 11 nines, WORM | S3 Object Lock |
+| Durability of network journal | 11 nines, WORM | write-once object storage |
 | Auditability | Every state change attributable to actor + rule version + input | Append-only `case_event` + hash-chained audit |
 | Reg E compliance | 100% of PC deadlines met or breach-logged | Dedicated timer service with independent availability |
 | RTO / RPO | 1 h / 5 min (core); 0 for journal | Warm standby + Global Tables |
@@ -1563,22 +1695,78 @@ Three services in scope instead of an entire platform. This is the single larges
 
 | Boundary | Consistency | Mechanism |
 |---|---|---|
-| Within `DisputeCase` aggregate | Strong | Single-row optimistic locking in Aurora |
+| Within `DisputeCase` aggregate | Strong | Single-row optimistic locking in the transactional store |
 | Case ↔ Postings | Eventual, compensating | Saga with `ReversePosting` compensation |
 | Case ↔ Network | Eventual, **non-compensable** | Once filed, a chargeback cannot be un-filed — the saga must therefore *pre-validate*, never roll back. All validation (rights, evidence, time bar) happens **before** `NetworkSubmissionQueued`. |
-| Case ↔ Read models | Eventual (< 2 s) | MSK → projection |
+| Case ↔ Read models | Eventual (< 2 s) | the event backbone → projection |
 | Case ↔ Partner view | Eventual (< 5 s) | Webhook fan-out |
 
 The non-compensable network boundary is the most important consistency constraint in the whole design and is why D2 chose orchestration: the saga must be able to *refuse to advance*, with full state visibility, rather than discover a problem after emission.
 
 ---
 
-## 12. Part K — Strangler-fig migration roadmap
+## 12. Technology realisation
+
+> **This is the only section that names products.** Everything in Parts 0–11 is expressed as capabilities and qualities. If your platform standards differ, replace this section — the architecture does not change.
+
+### 12.1 How to read this
+
+Each row states the **capability requirement** first. The product column is *one* realisation that satisfies it. The alternatives column exists to make the point that the requirement, not the product, is the architectural decision.
+
+### 12.2 Store classes
+
+| Class | Requirement | One realisation | Alternatives |
+|---|---|---|---|
+| **TX** | ACID, relational, supports an outbox row committed in the same transaction as the business write | Managed PostgreSQL | Any managed RDBMS; self-hosted PostgreSQL |
+| **JRN** | Append-only, high write volume, immutable retention, cheap at scale | Managed PostgreSQL partitioned by month + object storage for payloads | Wide-column store; log-structured store |
+| **KV** | Key-value, TTL expiry, conditional writes for idempotency | Managed key-value store | Redis with persistence; any KV with CAS |
+| **OBJ** | Object storage with write-once retention locks and server-side encryption | Managed object storage with object lock | Any WORM-capable store |
+| **IDX** | Search and analytical read models, rebuildable from events | Managed search + columnar warehouse | Any query engine — read models are disposable |
+
+### 12.3 Platform capabilities
+
+| Requirement | One realisation | Why it matters architecturally |
+|---|---|---|
+| **Ordered, durable queue keyed per case** | FIFO queue with message-group ordering | Cycle ordering per case is a **correctness** requirement, not a performance one |
+| **Event backbone with replay and schema enforcement** | Managed Kafka + schema registry | Replay is how read models are rebuilt; schema enforcement is how the no-PAN rule is enforced |
+| **Long-running orchestration with an audit trail** | Managed workflow service | The saga spans months and must be explicable to a regulator |
+| **Reliable scheduling** | Managed scheduler service | Replaces the incumbent's cluster-coordinated agents. Must not require its own quorum |
+| **Decision engine, versioned and effective-dated** | DMN engine | Scheme releases become data deployments |
+| **Container orchestration with network isolation** | Managed Kubernetes | The PCI-scoped adapters need their own subnet and egress path |
+| **Distributed tracing** | OpenTelemetry | One trace across a saga that spans months and four systems |
+| **Secrets and key management** | Managed secrets store + KMS, separate key per data class | PCI |
+
+### 12.4 Runtime
+
+| Choice | Recommendation | Reasoning |
+|---|---|---|
+| **Language** | A mainstream managed-runtime language with a mature banking ecosystem — Java or equivalent | The migration source is a JVM platform, the existing team skews Java, and PCI-attested libraries are readily available. This is a **team and risk** decision, not a technical one |
+| **Service framework** | Any mainstream framework with first-class observability, health, and config | No architectural dependency |
+| **API style** | REST + OpenAPI for synchronous, events for asynchronous | Partner contract needs to be publishable and versionable |
+
+> **If your platform standard is a different language, adopt it.** Nothing in Parts 0–11 depends on the runtime. Consistency with the organisation's existing operating model is worth more than any language-level advantage.
+
+### 12.5 The one trade-off worth deciding consciously
+
+**Managed orchestration versus an in-aggregate state machine.**
+
+| | Managed workflow service | State machine in the aggregate |
+|---|---|---|
+| Audit trail | Visual, per-execution, regulator-friendly | Must be built and maintained |
+| Cost | Per state transition | Negligible |
+| Testability | Requires the service | Plain unit tests |
+| Long waits | Native | Needs timer integration |
+
+The dispute lifecycle spends most of its life *waiting*, so transition counts are low and cost is not the deciding factor. **The auditability is worth paying for** — but it should be a conscious choice, not a default.
+
+---
+
+## 13. Migration roadmap
 
 ```mermaid
 flowchart LR
     subgraph P0["Phase 0 — Foundation (0-3m)"]
-        A1["AWS landing zone, EKS,<br/>MSK, schema registry"]
+        A1["the cloud platform landing zone, the container platform,<br/>the event backbone, schema registry"]
         A2["Canonical event model<br/>+ published language"]
         A3["pega-bridge-svc<br/>(bidirectional ACL)"]
     end
@@ -1617,7 +1805,7 @@ flowchart LR
     class P5 last
 ```
 
-### 12.1 Coexistence rules during Phases 2–4
+### 13.1 Coexistence rules during Phases 2–4
 
 | Rule | Detail |
 |---|---|
@@ -1628,7 +1816,7 @@ flowchart LR
 | **Run-off, don't migrate** | Open Pega cases stay in Pega until closed. Migrating in-flight cases across a 120-day network clock is where these programmes fail. |
 | **Reconciliation** | Daily three-way reconciliation: new platform journal ↔ Pega ↔ scheme raw report. Any break blocks the next cohort. |
 
-### 12.2 Phase exit criteria
+### 13.2 Phase exit criteria
 
 | Phase | Exit criteria |
 |---|---|
@@ -1640,32 +1828,44 @@ flowchart LR
 
 ---
 
-## 13. Appendix — Decision log (ADR summary)
+## 14. Decision log
 
-| ADR | Decision | Status | Consequence |
+| ADR | Decision | Status | Rejected alternative |
 |---|---|---|---|
-| ADR-001 | BIN→network routing lives in the backend (`scheme-resolution-svc`), not the FE | Accepted | FE stays out of PCI scope; adding a scheme is a backend-only change |
-| ADR-002 | Precedence: settlement network > ARN > BIN table; unresolved → human | Accepted | Correct handling of co-badged & debit-routed transactions |
-| ADR-003 | One adapter microservice per scheme, ACL both directions | Accepted | Independent certification and release trains |
-| ADR-004 | Conformist toward MCOM/VROL, ACL inward | Accepted | Scheme vocabulary never reaches the core model |
-| ADR-005 | Orchestrated saga (Step Functions) for the case lifecycle | Accepted | Auditable long-running state; network step is pre-validated, not compensated |
-| ADR-006 | Rules externalized, versioned, effective-dated | Accepted | Network releases become data deployments |
-| ADR-007 | Acquirer/Merchant access only via PAI (OHS + Published Language) | Accepted | Scales partner onboarding; enforces the trust boundary in your C4 |
-| ADR-008 | `PartnerCaseView` projection, not the case aggregate, exposed externally | Accepted | Internal stage changes don't break partner contracts |
-| ADR-009 | Timers in a dedicated service with independent availability | Accepted | Reg E compliance survives case-service degradation |
-| ADR-010 | Database per service; no shared schema | Accepted | Removes the Pega single-schema coupling |
-| ADR-011 | No PAN in any event schema (registry-enforced) | Accepted | Event backbone out of PCI scope |
-| ADR-012 | Strangler fig by (scheme, reason-code family); run off legacy cases in place | Accepted | Avoids migrating cases across live network clocks |
-| ADR-013 | Rejected: Shared Kernel between Dispute Case and Rules | Rejected | Would recreate Pega's flow/rule entanglement |
-| ADR-014 | Rejected: single unified `network-svc` | Rejected | Would couple Mastercard and Visa release trains |
+| **ADR-001** | Scheme routing resolved server-side, from the settlement record, never in the front end | Accepted (D1) | Front-end BIN lookup — drags the web and mobile tier into PCI scope |
+| **ADR-002** | Canonical fields carry the **scheme** (VISA / MASTERCARD), never the platform (VROL / MCOM) | Accepted | Platform-named values — break as soon as a scheme has no separately branded platform |
+| **ADR-003** | Orchestrated saga for the case lifecycle; choreography for side effects | Accepted (D2) | Pure choreography — case state becomes unauditable |
+| **ADR-004** | One adapter deployable per scheme | Accepted (D3) | A single network capability — couples independent release trains |
+| **ADR-005** | Conformist + ACL toward the schemes | Accepted (D4) | Attempting to negotiate the contract — we have no leverage |
+| **ADR-006** | Acquirers and merchants are **not users** of this platform | Accepted (D5) | A partner API as the primary path — models a deflection channel as the rail |
+| **ADR-007** | Store per capability, no shared schema | Accepted (D7) | Shared database — the incumbent failure mode |
+| **ADR-008** | Rules externalised, versioned, effective-dated by transaction date | Accepted (D8) | Rules embedded in flows — a scheme release becomes a code deploy |
+| **ADR-009** | Ledger-adjacent posting; balances never held here | Accepted (D9) | Owning balances — makes the platform a system of record for money |
+| **ADR-010** | Strangler-fig migration by case type | Accepted (D10) | Big-bang cutover |
+| **ADR-011** | **Persist → commit → acknowledge**, never reordered | Accepted (D11) | Acknowledge-then-persist — silently loses scheme messages |
+| **ADR-012** | **Reconciliation is a separate context that never mutates a case** | Accepted (D12) | Auto-healing reconciler — hides the defect and destroys the control's evidential value |
+| **ADR-013** | **Raw scheme payloads never leave the adapter** | Accepted (D13) | A shared raw-message store — puts scheme vocabulary outside the ACL |
+| **ADR-014** | **`NetworkExchange` carries an explicit `initiatingParty`** | Accepted (D14) | Inferring the filer from cycle type — wrong on Visa Allocation |
+| **ADR-015** | **`DisputeCycle` includes `DEFLECTION` and `APPEAL`; compliance is a sibling flow** | Accepted (D15) | Cycles ending at arbitration — cannot represent a legitimate appeal |
+| **ADR-016** | One message per case on the inbound fan-out | Accepted | Batched messages — retry unit no longer equals failure unit |
+| **ADR-017** | Complaint and Claim are separate aggregates | Accepted | One aggregate — conflates two regulatory regimes and their clocks |
+| **ADR-018** | Fund position tracked per cycle | Accepted | Ignoring it — the treasury exposure becomes invisible |
+| **ADR-019** | Technology named in Part 12 only | Accepted | Products embedded in the domain design — welds the architecture to one vendor |
+
+### 14.1 Open questions
+
+These need answers from the scheme licences, the SME, or the platform team. Each changes something material.
+
+| # | Question | What it changes |
+|---|---|---|
+| 1 | Do both schemes expose **single-case state retrieval**, un-throttled enough for full coverage of open cases? | Whether reconciliation can detect flow-2 losses at all ([§9.6](#96-what-it-needs-from-the-schemes)) |
+| 2 | Current **time bars, response windows and fees** per reason code | Every deadline calculation and the write-off threshold model |
+| 3 | Is the **appeal threshold** regionally variable? | Whether the threshold is configuration or a rule |
+| 4 | Does the incumbent acknowledge to the scheme **before or after** its local commit? | The size of the migration's data-integrity remediation |
+| 5 | Are **non-card disputes** in scope for this platform? | Materially changes scope and volume |
+| 6 | Reg E interpretation for the extended investigation limit | Whether certain journeys breach or not |
+| 7 | Organisational **runtime and platform standards** | [Part 12](#12-technology-realisation) only — nothing in Parts 0–11 |
 
 ---
 
-### Open questions to close before build
-
-1. **Acquirer edition scope** — is this issuer-side only, or does the same platform serve the acquiring side (merchant chargeback management)? That materially changes BC-9's weight.
-2. **Token vault ownership** — does an existing PCI vault expose an account-range dereference API, or must `scheme-resolution-svc` hold the BIN mapping itself?
-3. **Core banking posting API** — synchronous or batch? Batch posting changes the Reg E provisional-credit timer design.
-4. **Domestic schemes** — any co-badged domestic network in scope (which would promote the co-badge routing policy from an edge case to a core rule)?
-5. **Existing deflection contracts** — are Ethoca / Verifi / RDR feeds already in place? They belong upstream of Claim Intake, not inside it.
-6. **Multi-entity / multi-BIN** — one issuing entity or several (drives tenancy model in the event envelope).
+**Document status.** Parts 0–11 are technology-agnostic and describe the complete target capability set, including capabilities most programmes defer. Part 12 is one realisation and is expected to be replaced. Part 13 sequences delivery without removing anything from scope.

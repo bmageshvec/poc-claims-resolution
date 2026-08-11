@@ -21,7 +21,7 @@ stateDiagram-v2
     state "ALLOCATION — no Dispute Response stage" as AllocPath {
         direction LR
         [*] --> AcqAccepts2: "acquirer accepts<br/>Visa's allocation"
-        [*] --> AcqPreArb: "<b>ACQUIRER</b> initiates<br/>Pre-Arbitration (stage 3)"
+        [*] --> AcqPreArb: "ACQUIRER initiates<br/>Pre-Arbitration (stage 3)"
         AcqAccepts2 --> [*]
         AcqPreArb --> [*]
     }
@@ -42,7 +42,7 @@ stateDiagram-v2
 
     S2 --> IssuerWins: "accepted or no response"
     S2 --> IssuerConcedes: "issuer accepts<br/>the evidence"
-    S2 --> S3: "<b>ISSUER</b> initiates<br/>Pre-Arbitration"
+    S2 --> S3: "ISSUER initiates<br/>Pre-Arbitration"
 
     state "PRE-ARBITRATION — stage 3 Collab / stage 2 Alloc" as S3 {
         direction LR
