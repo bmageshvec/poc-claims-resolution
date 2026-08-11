@@ -1386,10 +1386,11 @@ Covered in [§9](#9-reconciliation--assurance). In summary: it queries the schem
 | Workflow split | **Allocation vs Collaboration** — determines who files pre-arbitration | None |
 | Filing party at pre-arbitration | **Acquirer** in Allocation, issuer in Collaboration | Issuer, always |
 | Skipped stage | Allocation has **no** response stage — `FIRST → PRE_ARB` is valid | Every cycle present |
+| Filing party at pre-arbitration | **Acquirer** in Allocation · **Issuer** in Collaboration — confirmed by arrow direction in both Visa figures | Issuer, always |
 | Pre-arbitration mandatory? | Yes, both workflows | Generally, but **optional** for some categories |
 | Structured evidence | Compelling-evidence fields, machine-evaluable | Documents only |
 | Amount rules | No published amount ladder | **Non-increasing chain enforced at every cycle** |
-| Fund position after a decline | Allocation: stays with issuer · Collaboration: returns to acquirer | Returns to acquirer |
+| Fund position as cycles progress | **Allocation:** never moves before the ruling · **Collaboration:** follows the last filing — acquirer on the response, issuer again on pre-arbitration | Issuer on chargeback, acquirer on second presentment |
 | Missing a deadline means | **Acceptance of liability** | Loss of the cycle |
 
 Every one of these is absorbed by the adapter. None reaches BC-2.

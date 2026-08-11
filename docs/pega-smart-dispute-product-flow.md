@@ -211,6 +211,8 @@ flowchart TB
 | If the acquirer declines | **Funds stay with the Issuer** | **Funds return to the Acquirer** |
 | Who is out of pocket during the dispute | Acquirer | **Issuer** |
 
+> ⚠ **The SME refines Pega's wording here.** Pega says the funds *"would be with the Acquirer until liability is decided"*, implying no further movement in Collaboration. The SME position is that **filing pre-arbitration moves the funds back to the issuer** — so the acquirer holds them only between the dispute response and the issuer's escalation. Pega's sentence may describe only the case where the issuer accepts the response and never escalates. See [lifecycles §1.2](./scheme-lifecycles-and-customer-journeys.md#12-who-holds-the-money-while-the-dispute-runs).
+
 This is a real treasury and risk difference, and it interacts badly with provisional credit: in a **Collaboration** dispute where the acquirer declines, the issuer has credited the cardholder *and* returned the funds to the acquirer — carrying the exposure on both sides until the ruling. In **Allocation**, it does not.
 
 > Nothing in our architecture models the fund position during a dispute. See §8, gap 2.

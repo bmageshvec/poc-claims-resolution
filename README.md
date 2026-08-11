@@ -11,6 +11,7 @@ dispute-architecture/
 ├── README.md                                  ← you are here
 ├── docs/
 │   ├── dispute-claims-resolution-architecture.md   ← the main architecture document (TO-BE)
+│   ├── dispute-process-stages.md                   ← the process, stage by stage
 │   ├── pega-lite-db-schema.md                      ← Pega Smart Dispute AS-IS DB schema + ERDs
 │   └── scheme-lifecycles-and-customer-journeys.md  ← VCR/MDR lifecycles + 4 worked journeys
 ├── prompts/
@@ -35,6 +36,7 @@ dispute-architecture/
 | [**`docs/dispute-claims-resolution-architecture.md` §0**](docs/dispute-claims-resolution-architecture.md#0-terminology--read-this-first) | **START HERE — shared glossary.** Scheme vs platform vs programme (VISA/VROL/VCR, MASTERCARD/MCOM/MDR), parties, lifecycle vocabulary, per-scheme terms, DDD terms, and the words that mean two different things depending on the scheme |
 | [`docs/dispute-claims-resolution-architecture.md`](docs/dispute-claims-resolution-architecture.md) | **TO-BE — target solution architecture.** Technology-agnostic in Parts 0–11: 17 bounded contexts incl. the new **Reconciliation & Assurance**, a capability catalog, C4 L1–L3, and **the four scheme integration flows** (file / poll / fan-out / reconcile). Products are named only in Part 12 |
 | [`docs/pega-lite-db-schema.md`](docs/pega-lite-db-schema.md) | **AS-IS** — the Pega Smart Dispute "lite" physical DB schema (~35 tables), Mermaid ERD legend, 4 ERDs, MCOM/VROL integration tables, table→bounded-context migration map |
+| [`docs/dispute-process-stages.md`](docs/dispute-process-stages.md) | **PROCESS** — the end-to-end dispute process in stage / path / step table format: intake channels, ingestion & triage, deflection, provisional credit, the scheme cycles, arbitration, appeal, and the parallel compliance / good-faith / recall flows. The operational companion to the architecture |
 | [`docs/pega-smart-dispute-product-flow.md`](docs/pega-smart-dispute-product-flow.md) | **AS-IS PRODUCT** — the dispute flow as *Pega* documents it (Smart Dispute Agentic Automation 24.2, Pega Academy): Visa classification, early resolution, the Allocation and Collaboration flows, pre-compliance/compliance, good faith, recall & withdraw. Independently confirms the pre-arbitration filer, and surfaces 7 gaps in our model incl. **appeal** and **fund position** |
 | [`docs/scheme-lifecycles-and-customer-journeys.md`](docs/scheme-lifecycles-and-customer-journeys.md) | **SCHEME BEHAVIOUR** — an at-a-glance two-path view, a generalized 6-stage lifecycle, Visa VCR (4 stages / 3 in Allocation) and Mastercard MDR (4 cycles), then one worked example ($249.99 goods-not-received) through both schemes, happy and negative paths. Validated against [Visa's VCR merchant guide](https://usa.visa.com/dam/VCOM/download/merchants/visa-claims-resolution-efficient-dispute-processing-for-merchants-VBS-14.APR.16.pdf), [Mastercom's Dispute Resolution Cycle](https://developer.mastercard.com/mastercom/documentation/dispute-resolution-cycle/) and [Rivero](https://rivero.tech/blog/dispute-lifecycle-explained) |
 

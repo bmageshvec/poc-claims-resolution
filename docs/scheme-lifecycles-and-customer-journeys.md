@@ -57,7 +57,7 @@
 | **Who escalates to arbitration** | **ACQUIRER** | **ISSUER** | **ISSUER** |
 | **Who rules** | **Visa** | **Visa** | **Mastercard** |
 | **Who holds the funds on filing** | **ISSUER** | **ISSUER** | **ISSUER** |
-| **Who holds the funds until the ruling** | **ISSUER** — never swaps | **ACQUIRER** once the chargeback is declined | **ACQUIRER** once a second presentment is made |
+| **Who holds the funds thereafter** | **ISSUER throughout** — never swaps | **Follows the last filing**: acquirer on the response, **back to the issuer on pre-arbitration** | **ACQUIRER** once a second presentment is made |
 | Stages | **3** | **4** | **4** |
 
 ```mermaid
@@ -108,19 +108,24 @@ So the filer follows from the workflow, and the workflow follows from the disput
 
 ### 1.2 Who holds the money while the dispute runs
 
-**The general rule: filing pulls the funds to the issuer, and a decline pushes them back.** Each rejection swaps the holder.
+**The general rule: the funds follow the most recent filing.** Each escalation pulls them toward the party that filed.
 
-| Event | Funds move | Source |
-|---|---|---|
-| Issuer files the chargeback | Acquirer → **Issuer** | MC: *"The chargeback transfers funds from the acquirer to the issuer"* |
-| Acquirer declines / re-presents | Issuer → **Acquirer** | MC: *"A second presentment transfers funds from an issuer to an acquirer"* · Visa Collaboration: *"if Acquirer declines the chargeback the funds are moved back to Acquirer"* |
-| Network rules | To whichever party wins | — |
+| Event | Visa **Allocation** | Visa **Collaboration** | **Mastercard MDR** |
+|---|---|---|---|
+| Issuer files dispute / chargeback | → **Issuer** | → **Issuer** | → **Issuer** |
+| Acquirer responds — declines or re-presents | *No such stage* — stays with **Issuer** | → **Acquirer** | → **Acquirer** |
+| Pre-arbitration filed | **Acquirer** files — stays with **Issuer** | **Issuer** files — → **Issuer** | **Issuer** files — *unconfirmed* |
+| Network rules | To the winner | To the winner | To the winner |
 
-**Visa Allocation is the exception — there is no swap.**
+Supporting quotes: MC — *"The chargeback transfers funds from the acquirer to the issuer"* and *"A second presentment transfers funds from an issuer to an acquirer."*
+
+**Visa Allocation is the exception — the funds never move before the ruling.**
 
 > *"In Allocation cases, Visa sends the funds to the Issuer on chargeback submission, and the funds stay with the Issuer until liability is decided."* — Pega
 
 That follows from the structure: Visa has already ruled on validity at stage 1, so the acquirer's pre-arbitration is a challenge to a decision Visa has made, not a rejection of a claim the issuer made. The money doesn't move until Visa says so.
+
+> ⚠ **One conflict to resolve.** Pega also states that in Collaboration *"the funds would be with the Acquirer until liability is decided"* — implying no movement at pre-arbitration. The table above reflects the **SME position**: filing pre-arbitration moves the funds back to the issuer. Pega's wording may describe only the case where the issuer accepts the response and never escalates. Confirm against the Visa Core Rules — it changes the length of the issuer's exposure window.
 
 **Why this matters more than it looks — it compounds with provisional credit.** Under Reg E the issuer has already credited the cardholder, and it **cannot** reverse that while the investigation is open. So once the funds go back to the acquirer, the issuer is out of pocket twice over:
 
@@ -376,14 +381,14 @@ stateDiagram-v2
 
 ### 5.1 Stage detail
 
-Windows marked **\*** are **hard timeframes** in Visa's published VCR model — they do not flex, and the same window applies to both parties. Visa's stated goal is *"most disputes resolved within 31 days or less"*, against roughly 46 days pre-VCR.
+Windows marked **\*** are **hard timeframes** in Visa's published VCR model — they do not flex, and the same window applies to both parties. **Collaboration's Dispute Response is the one window Visa does *not* asterisk.** Visa's stated goal is *"most disputes resolved within 31 days or less"*, against roughly 46 days pre-VCR.
 
 **Collaboration — 4 stages** (12.x Processing Errors, 13.x Consumer Disputes)
 
 | # | Stage | Who acts | Window | Canonical cycle | Writes |
 |---|---|---|---|---|---|
 | 1 | **Dispute** | **Issuer** files, with Dispute Questionnaire | 30 / 75 / 120 days by condition, from `pyTransactionDate` | `FIRST` | `pc_work_dispute_cycle`, `pc_data_vrol_case` |
-| 2 | **Dispute Response** | **Acquirer / merchant** | 30 days | `SECOND` | new `pc_data_networkmessage` (`INBOUND`) |
+| 2 | **Dispute Response** | **Acquirer / merchant** | 30 days — **not** a hard timeframe | `SECOND` | new `pc_data_networkmessage` (`INBOUND`) |
 | 3 | **Pre-Arbitration** | **Issuer** files (30 d\*), acquirer responds (30 d\*) | 30 + 30\* | `PRE_ARB` | `pc_work_dispute_cycle` |
 | 4 | **Arbitration** | **Issuer** escalates; **Visa** rules | 10 days\* to file | `ARBITRATION` | `pc_data_network_ruling` |
 
@@ -566,14 +571,14 @@ Consequence for the case model: `pyChargebackRightFlag` cannot be set to `Y` on 
 | Workflow split by category | **Yes** — Allocation vs Collaboration | **No** — one flow for every code |
 | Who files pre-arbitration | **Acquirer** (Allocation) · **Issuer** (Collaboration) | **Issuer**, always |
 | Is pre-arbitration mandatory before arbitration? | **Yes**, in both workflows | Generally, but **optional** for some categories (ATM, auth-related in DMS) |
-| Stage-2 response window | 30 days — a **hard** timeframe | 45 days |
+| Stage-2 response window | **30 days — NOT asterisked.** Only Collaboration's Dispute Response lacks the hard-timeframe marker in Visa's figure | 45 days |
 | Escalation-to-arbitration window | 10 days — **hard** | 45 days |
 | Missing a response deadline means | **Acceptance of liability and closure** (Response Certification) | Loss of the cycle |
 | Structured evidence standard | **CE3.0** — machine-evaluable fields | None — documents only |
 | Amount rules across cycles | No published amount ladder | **Non-increasing chain** enforced at every cycle (§6.3) |
 | Pre-dispute deflection | Order Insight, RDR, Merchant Purchase Inquiry | Ethoca alerts, Consumer Clarity, **Mastercom Collaboration requests** |
 | Liability decided by the network at stage 1 | **Yes**, in Allocation | **Never** |
-| Does the fund holder swap on a decline? | **Allocation: no** — stays with the issuer throughout · **Collaboration: yes** — back to the acquirer | **Yes** — the second presentment moves funds issuer → acquirer |
+| Do the funds move as cycles progress? | **Allocation: never** — with the issuer throughout · **Collaboration: yes** — to the acquirer on the response, back to the issuer on pre-arbitration | **Yes** — the second presentment moves funds issuer → acquirer |
 
 > ⚠ **"Collaboration" appears in both columns above meaning different things.** Visa's is a *workflow*; Mastercard's is a *pre-dispute alert*. See §14.3 — this is the highest-risk naming collision in the domain.
 
@@ -1041,19 +1046,41 @@ All four run the **Collaboration / MDR** path — Visa condition 13.1 and Master
 
 ### 14.1 Confirmed by Visa (S1)
 
-Visa's merchant guide contains the two workflow diagrams that settle the filing-party question outright.
+Visa's merchant guide contains the two workflow diagrams that settle the filing-party question outright. **Both have been read directly**, so every row below is evidenced by arrow direction, not inference.
 
 | Claim in this document | Visa's wording | § |
 |---|---|---|
 | Two workflows, split by dispute category | *"following one of two new processes"* — "Fraud and Authorization" / "Consumer and Processing Errors" | §1, §5.2 |
 | Allocation = 10.x + 11.x; Collaboration = 12.x + 13.x | The four categories: 10 Fraud, 11 Authorization, 12 Processing Errors, 13 Consumer Disputes | §1, §3.1 |
 | **Allocation has one fewer stage** | *"For fraud and authorization disputes, **a cycle has been eliminated**"* | §1.3, §5.1 |
-| **Allocation: acquirer files pre-arbitration** | Fraud/Auth flow reads Dispute VALID → **Pre-arbitration** → Pre-arbitration Response → Arbitration, with no Dispute Response step | §1, §4.1, §5.1 |
-| **Collaboration: issuer files pre-arbitration** | Consumer/Processing flow reads Dispute → **Dispute Response** → Pre-arbitration → Pre-arbitration Response → Arbitration | §1, §4.1, §5.1 |
+| **Allocation: acquirer files pre-arbitration** | In the *Fraud and Authorization* figure the **Pre-arbitration arrow runs Acquirer → Issuer**, the Pre-arbitration Response arrow runs Issuer → Acquirer, and the Arbitration arrow originates acquirer-side | §1, §4.1, §5.1 |
+| **Collaboration: issuer files pre-arbitration** | In the *Consumer and Processing Errors* figure the **Pre-arbitration arrow runs Issuer → Acquirer**, the Pre-arbitration Response arrow runs Acquirer → Issuer, and the Arbitration connector originates issuer-side | §1, §4.1, §5.1 |
 | **Visa rules, not the parties** | *"Final Ruling"* terminates both flows | §1.1 |
 | Visa decides Allocation validity itself | *"Visa will proactively provide an automated dispute decision based on the Visa rules"* | §5.2 |
-| Hard timeframes 30 / 30 / 10 | *"Pre-arbitration (30 days\*) · Pre-arbitration Response (30 days\*) · Arbitration (10 days\*)"*, *"\* Hard timeframes"* | §5.1 |
+| Hard timeframes 30 / 30 / 10 | *"Pre-arbitration (30 days\*) · Pre-arbitration Response (30 days\*) · Arbitration (10 days\*)"*, *"\* Hard timeframes"*. **Collaboration's Dispute Response (30 days) carries no asterisk** | §5.1 |
 | Acquirer's Allocation grounds are enumerated | *"Cardholder No Longer Wishes to Dispute, Compelling Evidence, Credit Processed, Invalid Dispute"* | §5.2 |
+
+**How to read Visa's two figures.** The horizontal party-to-party arrows are colour-coded by originator — and read from the issuer's seat, the colour also tells you which integration flow the step lands in:
+
+| Colour | Visa's meaning | From our seat | Our flow |
+|---|---|---|---|
+| **Yellow** | Issuer originates | We initiate — a synchronous call driven by a case decision | **CALL / FILE** |
+| **Dark blue** | Acquirer originates | It arrives — we discover it by scheduled polling | **POLL** |
+
+| Step | Allocation | Collaboration | Our flow |
+|---|---|---|---|
+| Dispute | Yellow — issuer | Yellow — issuer | CALL in both |
+| Dispute Response | *stage does not exist* | Blue — acquirer | POLL *(Collab only)* |
+| **Pre-arbitration** | **Blue — acquirer** | **Yellow — issuer** | **POLL** in Alloc · **CALL** in Collab |
+| Pre-arbitration Response | Yellow — issuer | Blue — acquirer | CALL in Alloc · POLL in Collab |
+| Arbitration connector | originates **acquirer**-side | originates **issuer**-side | POLL in Alloc · CALL in Collab |
+| Final Ruling | Yellow — Visa, to both | Yellow — Visa, to both | POLL in both |
+
+> **The filer flip is an integration flip.** Pre-arbitration is an outbound call in one workflow and an inbound poll result in the other — the same cycle type, opposite directions. That is why `initiatingParty` must be an explicit field ([architecture D14](./dispute-claims-resolution-architecture.md#12-the-fifteen-decisions-that-shape-everything-else)) and cannot be derived from the cycle.
+
+Three caveats: the colour rule covers the **horizontal message arrows only**; **`Final Ruling` is drawn yellow but behaves as a POLL for us** — Visa issues it, we discover it; and **every window is asterisked as hard except Collaboration's Dispute Response**.
+
+> ⚠ **Read the figures, not the extracted text.** Extracting the PDF flattens both diagrams into a list in which step order does not survive — in the Collaboration extract, "Pre-arbitration Response" appears *before* "Pre-arbitration", which is impossible as a sequence. Arrow direction and colour exist only in the rendered figure.
 
 **Two facts from S1 newly incorporated:**
 
