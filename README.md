@@ -19,12 +19,16 @@ dispute-architecture/
 ├── diagrams/                                       ← grouped by owning document
 │   ├── C4_ContextClaimsResoluion.drawio.png        ← original C4 L1 context (source input)
 │   ├── C4_L1_SystemContext_DisputePlatform.svg     ← ★ presentation master, rendered
+│   ├── dispute-e2e-swimlane.svg                    ← ★★ THE end-to-end flow — 8 lanes × 5 phases, one canvas
+│   ├── dispute-journey-capture-to-recover.svg      ← ★ the same journey collapsed to 5 phases × 3 lanes
+│   ├── phase-detail/                               ←  5 .svg — one per phase, sub-stage level
 │   ├── architecture/                               ← 16 .mmd — from the TO-BE architecture doc
 │   ├── ERD/                                        ←  4 .mmd — from the AS-IS schema doc
 │   ├── lifecycle-journeys/                         ←  8 .mmd — from the lifecycles doc
 │   └── pega-product-flow/                          ←  3 .mmd — from the Pega product-flow doc
 └── source/
-    └── C4_L1_SystemContext_DisputePlatform.drawio  ← ★ presentation master, editable
+    ├── C4_L1_SystemContext_DisputePlatform.drawio  ← ★ presentation master, editable
+    └── dispute-e2e-swimlane.py                     ← regenerates the E2E swimlane (auto-routes, 0 crossings)
 ```
 
 **Presentation masters vs inline diagrams.** Where a diagram must look exactly one way — the C4 L1 system context — the authoritative artifact is the **draw.io / SVG** pair marked ★. Mermaid cannot hold fixed bands, lane positions or connection points, so the `.mmd` copy in the doc is an approximation. Everything else is Mermaid-first.
@@ -36,7 +40,7 @@ dispute-architecture/
 | [**`docs/dispute-claims-resolution-architecture.md` §0**](docs/dispute-claims-resolution-architecture.md#0-terminology--read-this-first) | **START HERE — shared glossary.** Scheme vs platform vs programme (VISA/VROL/VCR, MASTERCARD/MCOM/MDR), parties, lifecycle vocabulary, per-scheme terms, DDD terms, and the words that mean two different things depending on the scheme |
 | [`docs/dispute-claims-resolution-architecture.md`](docs/dispute-claims-resolution-architecture.md) | **TO-BE — target solution architecture.** Technology-agnostic in Parts 0–11: 17 bounded contexts incl. the new **Reconciliation & Assurance**, a capability catalog, C4 L1–L3, and **the four scheme integration flows** (file / poll / fan-out / reconcile). Products are named only in Part 12 |
 | [`docs/pega-lite-db-schema.md`](docs/pega-lite-db-schema.md) | **AS-IS** — the Pega Smart Dispute "lite" physical DB schema (~35 tables), Mermaid ERD legend, 4 ERDs, MCOM/VROL integration tables, table→bounded-context migration map |
-| [`docs/dispute-process-stages.md`](docs/dispute-process-stages.md) | **PROCESS** — the end-to-end dispute process in stage / path / step table format: intake channels, ingestion & triage, deflection, provisional credit, the scheme cycles, arbitration, appeal, and the parallel compliance / good-faith / recall flows. The operational companion to the architecture |
+| [`docs/dispute-process-stages.md`](docs/dispute-process-stages.md) | **PROCESS** — opens with the **E2E swimlane**: 8 lanes × 5 phases on one canvas, every decision and every integration in a single continuous flow. Then the same journey collapsed to 5 phases × 3 lanes, five zoom-ins at sub-stage level, and the process in stage / path / step table format: intake channels, ingestion & triage, deflection, provisional credit, the scheme cycles, arbitration, appeal, and the parallel compliance / good-faith / recall flows. The operational companion to the architecture |
 | [`docs/pega-smart-dispute-product-flow.md`](docs/pega-smart-dispute-product-flow.md) | **AS-IS PRODUCT** — the dispute flow as *Pega* documents it (Smart Dispute Agentic Automation 24.2, Pega Academy): Visa classification, early resolution, the Allocation and Collaboration flows, pre-compliance/compliance, good faith, recall & withdraw. Independently confirms the pre-arbitration filer, and surfaces 7 gaps in our model incl. **appeal** and **fund position** |
 | [`docs/scheme-lifecycles-and-customer-journeys.md`](docs/scheme-lifecycles-and-customer-journeys.md) | **SCHEME BEHAVIOUR** — an at-a-glance two-path view, a generalized 6-stage lifecycle, Visa VCR (4 stages / 3 in Allocation) and Mastercard MDR (4 cycles), then one worked example ($249.99 goods-not-received) through both schemes, happy and negative paths. Validated against [Visa's VCR merchant guide](https://usa.visa.com/dam/VCOM/download/merchants/visa-claims-resolution-efficient-dispute-processing-for-merchants-VBS-14.APR.16.pdf), [Mastercom's Dispute Resolution Cycle](https://developer.mastercard.com/mastercom/documentation/dispute-resolution-cycle/) and [Rivero](https://rivero.tech/blog/dispute-lifecycle-explained) |
 
@@ -115,7 +119,19 @@ Diagrams are grouped by the document that embeds them.
 | `02-pega-visa-collaboration-flow` | flowchart | Pega's Collaboration flow — **issuer** files pre-arb; funds return to acquirer on decline |
 | `03-pega-precompliance-compliance-flow` | flowchart | Independent compliance route; 30-day silence = full liability |
 
-All 31 diagrams validated against the Mermaid parser — 0 failures. All dates, day-counts and scheme response windows in the journeys verified programmatically.
+### `diagrams/phase-detail/` — 5 SVG, zoom-ins on one column each of the E2E swimlane
+
+These are **magnifications of `dispute-e2e-swimlane.svg`, not separate processes** — same lanes, same colours, more room for sub-stages and exit paths. Three lanes — **issuer systems** (left) · **platform flow and decisions** (centre) · **external platforms** (right) — with one shared line-style key across all five: **grey solid** = internal flow · **blue solid** = synchronous call · **orange dotted** = poll · **purple dashed** = asynchronous / event.
+
+| File | Phase | Decisions and integrations at sub-stage level |
+|---|---|---|
+| `phase-1-capture.svg` | 1 · Capture | Channel intake → identity & entitlement → core-platform txn lookup → duplicate check → Reg E clock start. Sync to card auth/posting and customer master |
+| `phase-2-auto-resolve.svg` | 2 · Auto-resolve & triage | Eligibility rules, reason-code derivation, credit/no-credit decision, straight-through resolve vs route to analyst. Sync to fraud/scoring and GL posting |
+| `phase-3-pre-dispute.svg` | 3 · Pre-dispute | **Ethoca alert** and **RDR/Verifi** deflection async-out with poll-back; VROL Merchant Purchase Inquiry and MCOM Collaboration request; merchant-refund vs proceed-to-file decision |
+| `phase-4-dispute.svg` | 4 · Dispute (file) | Evidence pack assembly → scheme routing (VROL vs MCOM) → **synchronous file** → poll for acquirer response → represent / accept branch |
+| `phase-5-recover.svg` | 5 · Recover | **Who files pre-arbitration?** (Visa Allocation = acquirer; Collaboration & MDR = issuer) → arbitration → appeal ≥ USD 5,000 → settlement write-back, plus the independent reconciliation poll |
+
+All 31 Mermaid diagrams validated against the parser — 0 failures; all 7 SVGs well-formed with 0 box overlaps. All dates, day-counts and scheme response windows in the journeys verified programmatically.
 
 ## Which diagram type for which job
 

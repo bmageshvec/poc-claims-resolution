@@ -15,7 +15,115 @@
 
 ---
 
-## 1. The process at a glance
+## 1. The journey, end to end
+
+### 1.1 One diagram, one flow — the E2E swimlane
+
+**This is the diagram to read first.** All five phases, all eight actors and every integration on a single canvas. Nothing is split out; the phases are columns of one continuous flow, so you can trace a claim from the moment a cardholder calls to the moment the ledger is squared without changing pages.
+
+![Dispute Claims Resolution — end-to-end swimlane](../diagrams/dispute-e2e-swimlane.svg)
+
+*Open [`diagrams/dispute-e2e-swimlane.svg`](../diagrams/dispute-e2e-swimlane.svg) full size — it is 2062 px wide.*
+
+**How to read it.** Lanes are *who*, columns are *when*.
+
+| Lane | Who | What it holds |
+|---|---|---|
+| **Cardholder & Channels** | app · web · IVR · branch · CSR | Where the claim enters and where every outbound communication lands |
+| **Core Issuer Platform** | auth · posting · GL · fraud · CRM | The systems of record we call but do not own — transaction lookup, customer master, provisional credit, final settlement write-back |
+| **DRS · Intake & Triage** | us | The claim record itself: capture, duplicate check, reason code, evidence pack, recovery tracking, reconciliation |
+| **DRS · Orchestration** | us | **Every decision in the process lives in this lane.** If a box is amber, a rule or an analyst chooses a path there |
+| **DRS · Scheme Adapters** | us | The four integration flows — file, poll, fan-out, reconcile |
+| **Deflection Networks** | Ethoca · RDR / Verifi | Pre-dispute deflection, reached before any chargeback exists |
+| **Scheme Platforms** | VROL (Visa) · MCOM (Mastercard) | Where recovery actually executes |
+| **Acquirer & Merchant** | the other side | **Reachable only through a scheme.** No arrow crosses from our lanes to this one directly — that is the single most important structural fact in the diagram |
+
+**Four line styles, and they are the whole integration story**
+
+| Line | Meaning | Why it matters |
+|---|---|---|
+| **Grey solid** | Internal flow / hand-off | Stays inside our boundary |
+| **Blue solid** | **Synchronous call** — we block on the answer | Availability of the callee becomes our availability |
+| **Orange dotted** | **POLL** — we ask, repeatedly | **Nothing arrives unless we ask for it.** Every inbound arrow from a scheme or partner is dotted |
+| **Purple dashed** | **Asynchronous** — event or command, fire-and-forget | We do not wait; ordering is not guaranteed |
+
+**Three things the single view makes obvious that five separate views hid**
+
+1. **The orange lines all point the same way — upward, into our adapters.** Visa, Mastercard, Ethoca and RDR all answer by poll. There is no push. Detection lag is therefore a design parameter, not an accident.
+2. **The amber decision lane is unbroken across all five phases.** The scheme executes; we decide. Every branch — auto-resolve, provisional credit, deflect, scheme route, accept-or-continue, who-files-pre-arb, appeal — sits in one horizontal band.
+3. **`Who files pre-arbitration?` is the only decision that reverses an integration direction.** In Visa Allocation the acquirer files and pre-arbitration reaches us as a *poll result*; in Collaboration and Mastercard MDR we file, so it is an outbound *call*. Same cycle type, opposite arrow.
+
+### 1.2 The 30-second version
+
+If the full swimlane is more than you need, this is the same journey collapsed to phases and three lanes:
+
+![Dispute use-case journey — Capture to Recover](../diagrams/dispute-journey-capture-to-recover.svg)
+
+*Open [`diagrams/dispute-journey-capture-to-recover.svg`](../diagrams/dispute-journey-capture-to-recover.svg) full size.*
+
+The five phases run left to right. Three lanes show **where each phase actually executes**:
+
+| Lane | Who | What happens there |
+|---|---|---|
+| **Channels · Exits** | Cardholder, CSR | Intake at Capture; from then on, the green boxes are the **off-ramps** where a case leaves the journey |
+| **Dispute Resolution Platform** | Us | **Orchestrates all five phases.** Every phase has platform work — even Recover |
+| **Card scheme · VROL / MCOM** | Visa, Mastercard | **Executes the network cycles.** Populated only from Pre-Dispute onward |
+
+**The point the diagram makes:** the Recover phase is *executed at the scheme*, not in the platform. Representment, pre-arbitration, arbitration and compliance all happen in VROL and Mastercom. The platform's role in Recover is to **file into it, poll it back, adjudicate the result, and book the outcome** — orchestrating, not executing.
+
+That is why the integration lane sits between them, and why it carries only two kinds of arrow:
+
+| Arrow | Meaning |
+|---|---|
+| **CALL** (solid, downward) | We file — synchronous, one case, triggered by a decision |
+| **POLL** (dashed, upward) | We retrieve — scheduled, batched, then acknowledged |
+
+**Four exits, and they get cheaper the earlier they fire.** An auto charge-off at phase 2 costs an accounting entry. A merchant refund at phase 3 costs nothing at all — no filing fee, no analyst time, no time bar. By phase 5 a loss costs several times the disputed amount once fees are counted.
+
+---
+
+## 2. Phase detail — zoom-ins on the same flow
+
+> **These are magnifications, not separate processes.** Each file below is one column of §1.1 enlarged so the sub-stages, exit paths and error branches fit. The lanes, the colours and the line styles are identical, and every phase begins where the previous one ends. Read §1.1 for the flow; come here only when you need the detail inside a phase.
+
+Same four line styles as §1.1 — grey internal, **blue synchronous**, **orange dotted poll**, **purple dashed async**.
+
+| Phase | Zoom-in | The decision that shapes it | Key integrations |
+|---|---|---|---|
+| **1 · Capture** | [`phase-1-capture.svg`](../diagrams/phase-detail/phase-1-capture.svg) | Identity established? → transaction found? → duplicate? | Core banking/CIF, switch, token vault, fraud — **all synchronous** |
+| **2 · Auto-Resolve** | [`phase-2-auto-resolve.svg`](../diagrams/phase-detail/phase-2-auto-resolve.svg) | Below threshold? → customer withdraws? → pursue the scheme? | Rules (sync); postings and notices (**async**) |
+| **3 · Pre-Dispute** | [`phase-3-pre-dispute.svg`](../diagrams/phase-detail/phase-3-pre-dispute.svg) | Right exists? → time bar expired? → merchant credits? | **Ethoca, RDR/Verifi** (async out) · **VROL MPI, MCOM Collaboration** (sync out) · **all four answer by poll** |
+| **4 · Dispute** | [`phase-4-dispute.svg`](../diagrams/phase-detail/phase-4-dispute.svg) | Which scheme? → which Visa workflow? → pre-conditions met? | VROL/MCOM **CALL** out, **POLL** ack back; core banking async |
+| **5 · Recover** | [`phase-5-recover.svg`](../diagrams/phase-detail/phase-5-recover.svg) | Response received? → accept or challenge? → **who files pre-arb?** → escalate? → appeal? | VROL/MCOM both directions · **reconciliation polls independently** |
+
+### 2.1 What each zoom-in adds
+
+**Phase 1 · Capture** — every integration is synchronous, because the claim cannot advance without an answer. Three exits: unidentified goes to a complaint queue, transaction-not-found is rejected, duplicate is linked, reasserted or rejected.
+
+**Phase 2 · Auto-Resolve** — three chances to close before any scheme cost is incurred. Note the asymmetry: the rules lookup **blocks**, but the write-off posting and the customer notice both leave **asynchronously**. Nothing waits on the ledger.
+
+**Phase 3 · Pre-Dispute** — the busiest integration phase. Four deflection channels, two per scheme:
+
+| Channel | Scheme | Out | Back |
+|---|---|---|---|
+| **Ethoca** | Mastercard | async alert | **poll** |
+| **RDR / Verifi** | Visa | async rule evaluation | **poll** |
+| **VROL Merchant Purchase Inquiry / Order Insight** | Visa | sync call | **poll** |
+| **MCOM Collaboration request** | Mastercard | sync call | **poll** |
+
+> **Nothing pushes back to us.** All four channels are drawn with a dotted return line for that reason — the merchant's answer exists at the scheme or the alert network, and we only have it once we have polled for it. Two exits leave before this phase completes: *no dispute right* diverts to pre-compliance, and *time bar expired* diverts to good faith.
+
+**Phase 4 · Dispute** — provisional credit fires **first**, on the regulatory clock, before any scheme interaction. The workflow decision (Allocation vs Collaboration) happens here because it determines everything downstream. Filing is a synchronous call journalled before transmit; the acknowledgement returns by poll.
+
+**Phase 5 · Recover** — the phase executed at the scheme. It contains the branch that changes integration direction:
+
+> **`Who files pre-arbitration?`** — in **Allocation** the acquirer files and we respond, so pre-arbitration reaches us as a **poll** result. In **Collaboration** we file, so it is an outbound **call**. Same cycle type, opposite direction — which is why `initiatingParty` is an explicit field and cannot be derived.
+
+Reconciliation appears here as a **separate poll** into the scheme, drawn independently of the main polling path. That separation is deliberate: a reconciler sharing the poller's code cannot detect the poller's faults.
+
+---
+
+## 3. The process at a glance
 
 Blank cells continue the row above, as in a merged spreadsheet cell.
 
@@ -36,7 +144,7 @@ Blank cells continue the row above, as in a merged spreadsheet cell.
 | **5** | **FIRST CHARGEBACK** *(Mastercard)* **/ DISPUTE** *(Visa)* | Issuer files | Build and file cycle 1 | **Issuer** | Funds move acquirer → issuer |
 | **6** | **SECOND PRESENTMENT / REPRESENTMENT** *(Mastercard)* **/ DISPUTE RESPONSE** *(Visa Collaboration)* | Acquirer defends | Accept · partial accept · reject | **Acquirer** | Funds **return to the acquirer** on a decline |
 | | | **Not present in Visa Allocation** — the cycle is eliminated | **No Dispute Response stage exists.** The acquirer's only route to challenge is pre-arbitration | — | Stage skipped. **Funds remain with the issuer — no swap** |
-| **7** | **PRE-ARBITRATION** | Last bilateral chance to settle | File pre-arbitration | **Varies — see §7** | Accepted, declined, or lapsed |
+| **7** | **PRE-ARBITRATION** | Last bilateral chance to settle | File pre-arbitration | **Varies — see §9** | Accepted, declined, or lapsed |
 | **8** | **ARBITRATION** | Scheme decides | File arbitration case | Whoever filed pre-arb | **Binding ruling** + fees |
 | **9** | **APPEAL** *(threshold-bound)* | Either party, disputed amount at or above the scheme threshold | File appeal | Issuer or acquirer | **Final** ruling |
 | **10** | **RESOLVE & CLOSE** | Book the outcome | Final credit · PC reversal · write-off · recovery · fees | Issuer | Case closed, customer notified |
@@ -46,7 +154,7 @@ Blank cells continue the row above, as in a merged spreadsheet cell.
 
 ---
 
-## 2. Stage 1 · INTAKE
+## 4. Stage 1 · INTAKE
 
 | Path | Channel | Authenticated? | Produces | Key control |
 |---|---|---|---|---|
@@ -55,7 +163,7 @@ Blank cells continue the row above, as in a merged spreadsheet cell.
 | **Customer contacts the bank** | Phone banking | Yes — CSR verifies on the call | `Claim` | Verification depth appropriate to money movement |
 | | Live chat | Yes — session-authenticated | `Claim` | Same as phone |
 
-### 2.1 Why unauthenticated intake produces a Complaint, not a Claim
+### 4.1 Why unauthenticated intake produces a Complaint, not a Claim
 
 An unauthenticated form cannot support a dispute case directly:
 
@@ -71,7 +179,7 @@ An unauthenticated form cannot support a dispute case directly:
 
 > **⚠ A compliance question to settle.** The regulatory clock starts on *notice*, not on identity resolution. If a form arrives Monday and identity is resolved Thursday, three days may already be gone. Compliance should rule on whether `Complaint` is a safe state to linger in, because it changes the SLA on the triage queue.
 
-### 2.2 The document-collection sub-flow
+### 4.2 The document-collection sub-flow
 
 Where evidence is needed from the customer:
 
@@ -87,7 +195,7 @@ Where evidence is needed from the customer:
 
 ---
 
-## 3. Stage 2 · INGESTION & TRIAGE
+## 5. Stage 2 · INGESTION & TRIAGE
 
 | Step | What it does | Where the answer comes from | Outcome if it fails |
 |---|---|---|---|
@@ -99,7 +207,7 @@ Where evidence is needed from the customer:
 | **Eligibility** | Is there a right? Which reason code, time bar, evidence, pre-conditions? | Rules capability | Denied — no right, or time bar expired |
 | **Scheme resolution** | Which scheme, from the settlement record | Scheme resolution | Manual review — **never guess** |
 
-### 3.1 The duplicate check is cumulative, not per-claim
+### 5.1 The duplicate check is cumulative, not per-claim
 
 The control is not "is this the same claim twice" — it is **has the customer already been made whole on this transaction**:
 
@@ -110,7 +218,7 @@ SUM(amounts resolved in the customer's favour on transaction T)
 
 This holds even across several partial disputes on the same transaction, and it mirrors the amount chain the schemes enforce on their side.
 
-### 3.2 Scheme resolution — precedence order
+### 5.2 Scheme resolution — precedence order
 
 | # | Basis | Source |
 |---|---|---|
@@ -121,7 +229,7 @@ This holds even across several partial disputes on the same transaction, and it 
 
 ---
 
-## 4. Stage 3 · PRE-DISPUTE / DEFLECTION *(optional)*
+## 6. Stage 3 · PRE-DISPUTE / DEFLECTION *(optional)*
 
 **The cheapest possible outcome.** No filing fee, no analyst time, no scheme clock, no regulatory clock.
 
@@ -136,7 +244,7 @@ This holds even across several partial disputes on the same transaction, and it 
 
 ---
 
-## 5. Stage 4 · PROVISIONAL CREDIT
+## 7. Stage 4 · PROVISIONAL CREDIT
 
 | Property | Detail |
 |---|---|
@@ -149,7 +257,7 @@ This holds even across several partial disputes on the same transaction, and it 
 
 ---
 
-## 6. Stages 5–6 · FILING AND THE ACQUIRER'S RESPONSE
+## 8. Stages 5–6 · FILING AND THE ACQUIRER'S RESPONSE
 
 | | **Mastercard (MDR)** | **Visa — Collaboration** | **Visa — Allocation** |
 |---|---|---|---|
@@ -161,7 +269,7 @@ This holds even across several partial disputes on the same transaction, and it 
 | Evidence model | Documents | Structured compelling-evidence fields | Narrow, enumerated grounds |
 | Funds after a decline | Return to acquirer | Return to acquirer | **Stay with the issuer** |
 
-### 6.1 Where the money sits
+### 8.1 Where the money sits
 
 **The rule: the funds follow the most recent filing — except in Visa Allocation, where they never move at all before the ruling.**
 
@@ -180,7 +288,7 @@ This holds even across several partial disputes on the same transaction, and it 
 
 ---
 
-## 7. Stage 7 · PRE-ARBITRATION — the filer changes
+## 9. Stage 7 · PRE-ARBITRATION — the filer changes
 
 **This is the most commonly modelled-wrong part of the process.**
 
@@ -192,7 +300,7 @@ This holds even across several partial disputes on the same transaction, and it 
 
 **The underlying rule:** the party that files is the party dissatisfied with the current state. In Collaboration the acquirer has already responded, so the unhappy party is the issuer. In Allocation there is no response stage, so it is the acquirer. **The filer flips because the sequence flips.**
 
-### 7.1 Sources, and how to verify this yourself
+### 9.1 Sources, and how to verify this yourself
 
 **Both Visa figures have now been read directly. The filing party is settled for both workflows.**
 
@@ -204,7 +312,7 @@ This holds even across several partial disputes on the same transaction, and it 
 | **Pega Academy**, Collaboration topic | *"The **Issuer** initiates the pre-arbitration against the Acquirer… if the Issuer is not ready to accept the response"* |
 | **Rivero** · **Project SME** | Both state and confirm the same |
 
-### 7.2 How to read the Visa figures
+### 9.2 How to read the Visa figures
 
 The **horizontal party-to-party arrows** are colour-coded by originating party — and read from *our* seat, that colour tells you which integration flow the step belongs to:
 
@@ -242,7 +350,7 @@ Side by side, the flip is visible at a glance:
 
 ---
 
-## 8. Stages 8–9 · ARBITRATION AND APPEAL
+## 10. Stages 8–9 · ARBITRATION AND APPEAL
 
 | Property | Detail |
 |---|---|
@@ -253,13 +361,13 @@ Side by side, the flip is visible at a glance:
 
 > **Appeal is a real stage.** A case can legitimately continue past arbitration — the stage machine must accept it rather than treat it as an invalid transition.
 
-### 8.1 The commercial reality
+### 10.1 The commercial reality
 
 Losing at arbitration typically costs several times the disputed amount once filing fees, technical fees and analyst time are counted. Write-off thresholds are therefore **effective-dated policy**, owned by the rules capability — not a constant in code.
 
 ---
 
-## 9. Parallel and alternate flows
+## 11. Parallel and alternate flows
 
 These are **not** stages of the cycle above. Each has independent entry conditions.
 
@@ -273,9 +381,9 @@ These are **not** stages of the cycle above. Each has independent entry conditio
 
 ---
 
-## 10. Cross-stage concerns
+## 12. Cross-stage concerns
 
-### 10.1 Two clocks, always running
+### 12.1 Two clocks, always running
 
 | Clock | Owned by | Behaviour |
 |---|---|---|
@@ -284,7 +392,7 @@ These are **not** stages of the cycle above. Each has independent entry conditio
 
 **The regulatory clock frequently expires first.** The bank funds the cardholder while the scheme deliberates — which is why timers must fire even when other capabilities are degraded.
 
-### 10.2 How the platform talks to the scheme
+### 12.2 How the platform talks to the scheme
 
 Four flows, not one. Full detail in [architecture §8](./dispute-claims-resolution-architecture.md#8-scheme-integration--the-four-flows).
 
@@ -295,7 +403,7 @@ Four flows, not one. Full detail in [architecture §8](./dispute-claims-resoluti
 | **FAN-OUT** | A poll result | A poison record blocking good work — one message per case, always |
 | **RECONCILE** | A schedule | *This flow is the detector for the other three* |
 
-### 10.3 Controls that must exist at each stage
+### 12.3 Controls that must exist at each stage
 
 | Stage | Control |
 |---|---|
@@ -310,7 +418,7 @@ Four flows, not one. Full detail in [architecture §8](./dispute-claims-resoluti
 
 ---
 
-## 11. What this adds to the original stage list
+## 13. What this adds to the original stage list
 
 | Added | Why it matters |
 |---|---|
@@ -325,7 +433,7 @@ Four flows, not one. Full detail in [architecture §8](./dispute-claims-resoluti
 
 ---
 
-## 12. Open questions
+## 14. Open questions
 
 1. Does the regulatory clock start at **form submission** or at **identity resolution** for unauthenticated intake?
 2. Are CSRs raising a *complaint* record or a *dispute claim*? They are different regimes with different SLAs
