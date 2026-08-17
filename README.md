@@ -28,10 +28,11 @@ dispute-architecture/
 │   └── pega-product-flow/                          ←  3 .mmd — from the Pega product-flow doc
 └── source/
     ├── C4_L1_SystemContext_DisputePlatform.drawio  ← ★ presentation master, editable
-    └── dispute-e2e-swimlane.py                     ← regenerates the E2E swimlane (auto-routes, 0 crossings)
+    ├── dispute-e2e-swimlane.drawio                 ← ★ E2E swimlane, editable in draw.io (2 layers)
+    └── dispute-e2e-swimlane.py                     ← generator — emits BOTH the .svg and the .drawio
 ```
 
-**Presentation masters vs inline diagrams.** Where a diagram must look exactly one way — the C4 L1 system context — the authoritative artifact is the **draw.io / SVG** pair marked ★. Mermaid cannot hold fixed bands, lane positions or connection points, so the `.mmd` copy in the doc is an approximation. Everything else is Mermaid-first.
+**Presentation masters vs inline diagrams.** Where a diagram must look exactly one way — the C4 L1 system context and the E2E swimlane — the authoritative artifact is the **draw.io / SVG** pair marked ★. Mermaid cannot hold fixed bands, lane positions or connection points, so the `.mmd` copy in the doc is an approximation. Everything else is Mermaid-first.
 
 ## Documents
 

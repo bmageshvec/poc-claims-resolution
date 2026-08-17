@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import html, os
 
 C = {"flow":"#334155","sync":"#1061B0","poll":"#C1440E","asyn":"#7B2CBF",
@@ -351,3 +352,132 @@ for (a,b,k,vx,ch,da,db) in E:
             if hits(sg, v[:4]):
                 print("CROSS  %-4s -> %-4s  through %s" % (a,b,nid)); bad+=1
 print("edge/box crossings:", bad)
+
+# ================================================================ draw.io emitter
+# Same node/edge model, same routed polylines. Emits an editable .drawio master so
+# the diagram can be nudged in the GUI without re-running this script.
+# NOTE: <b>/<font> are legal here because draw.io cells set html=1 and render them.
+# That is NOT true of Mermaid labels — see prompts/mermaid-diagram-rules.md rule 9.
+
+def _x(s): return (s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                    .replace('"',"&quot;").replace("'","&#39;"))
+def _tint(hexc, f=0.10):
+    r,g,b = int(hexc[1:3],16),int(hexc[3:5],16),int(hexc[5:7],16)
+    return "#%02X%02X%02X" % tuple(round(255+(v-255)*f) for v in (r,g,b))
+
+DSTYLE = {
+ "step" :"fillColor=#FFFFFF;strokeColor=#94A3B8;strokeWidth=1.3;",
+ "dec"  :"fillColor=#FEF6E7;strokeColor=#B45309;strokeWidth=1.7;",
+ "core" :"fillColor=#EEF2F7;strokeColor=#64748B;strokeWidth=1.3;",
+ "ext"  :"fillColor=#EAF2FB;strokeColor=#1061B0;strokeWidth=1.5;",
+ "actor":"fillColor=#F2FBF6;strokeColor=#0E7490;strokeWidth=1.4;",
+ "note" :"fillColor=#F8FAFC;strokeColor=#94A3B8;strokeWidth=1.1;dashed=1;dashPattern=4 3;",
+}
+DEDGE = {
+ "flow" :"strokeColor=#334155;strokeWidth=1.8;",
+ "sync" :"strokeColor=#1061B0;strokeWidth=2;",
+ "poll" :"strokeColor=#C1440E;strokeWidth=2.4;dashed=1;dashPattern=1 3;",
+ "async":"strokeColor=#7B2CBF;strokeWidth=2.2;dashed=1;dashPattern=8 4;",
+}
+VBASE = "rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#0F172A;fontStyle=0;"
+EBASE = ("edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;"
+         "exitDx=0;exitDy=0;entryDx=0;entryDy=0;exitPerimeter=0;entryPerimeter=0;jettySize=auto;")
+
+def _label(lines):
+    out = "<b>%s</b>" % _x(lines[0])
+    for l in lines[1:]:
+        out += "<br><font style=\"font-size:9.5px\" color=\"#475569\">%s</font>" % _x(l)
+    return out
+
+d=[]
+d.append('<mxfile host="app.diagrams.net" agent="dispute-e2e-swimlane.py" version="24.0.0">')
+d.append('  <diagram id="e2e-swimlane" name="E2E Swimlane">')
+d.append('    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" '
+         'connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="%d" pageHeight="%d" math="0" shadow="0">' % (W,H))
+d.append('      <root>')
+d.append('        <mxCell id="0" />')
+d.append('        <mxCell id="L0" value="Frame" parent="0" style="locked=1;" />')
+d.append('        <mxCell id="L1" value="Diagram" parent="0" />')
+
+def V(cid, x, y, w, h, style, value="", parent="L1"):
+    value = _x(value)          # draw.io stores HTML labels XML-escaped inside the attribute
+    d.append('        <mxCell id="%s" value="%s" style="%s" vertex="1" parent="%s">'
+             '<mxGeometry x="%.1f" y="%.1f" width="%.1f" height="%.1f" as="geometry"/></mxCell>'
+             % (cid, value, style, parent, x, y, w, h))
+
+# --- frame layer: title, lane bands, gutter labels, phase headers
+V("t1",24,14,1600,28,"text;html=1;align=left;verticalAlign=middle;fontSize=21;fontStyle=1;fontColor=#0F172A;",
+  "Dispute Claims Resolution — end-to-end swimlane, Capture through Recover","L0")
+V("t2",24,44,1900,20,"text;html=1;align=left;verticalAlign=middle;fontSize=12;fontColor=#475569;",
+  "One flow, eight lanes, five phases. The platform orchestrates every decision; the scheme platforms execute recovery. "
+  "Nothing reaches the acquirer except through a scheme.","L0")
+for i,(nm,sub,h) in enumerate(LANES):
+    V("lane%d"%i,0,LT[i],W,h,"rounded=0;whiteSpace=wrap;html=1;fillColor=%s;strokeColor=#CBD5E1;"
+      % ("#FFFFFF" if i%2 else "#F8FAFC"),"","L0")
+    V("gut%d"%i,0,LT[i],GUT,h,"rounded=0;whiteSpace=wrap;html=1;fillColor=#E8EDF3;strokeColor=#CBD5E1;"
+      "align=left;verticalAlign=middle;spacingLeft=14;fontSize=11.5;fontColor=#0F172A;",
+      "<b>%s</b><br><font style=\"font-size:9.5px\" color=\"#475569\">%s</font>" % (_x(nm),_x(sub)),"L0")
+PCD = ["#0E7490","#0F766E","#B45309","#1061B0","#7B2CBF"]
+for i,(num,nm,desc,x0,x1) in enumerate(PH):
+    V("ph%d"%i,x0,TOP_TITLE,x1-x0-2,HDR_H-8,
+      "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=%s;strokeColor=%s;align=left;verticalAlign=top;"
+      "spacingLeft=12;spacingTop=6;fontSize=12.5;fontColor=%s;" % (_tint(PCD[i]),PCD[i],PCD[i]),
+      "<b>PHASE %s · %s</b><br><font style=\"font-size:9.5px\" color=\"#475569\">%s</font>" % (num,_x(nm),_x(desc)),"L0")
+    if i:
+        d.append('        <mxCell id="sep%d" style="endArrow=none;html=1;strokeColor=#94A3B8;dashed=1;dashPattern=5 5;" '
+                 'edge="1" parent="L0"><mxGeometry relative="1" as="geometry">'
+                 '<mxPoint x="%d" y="%d" as="sourcePoint"/><mxPoint x="%d" y="%d" as="targetPoint"/>'
+                 '</mxGeometry></mxCell>' % (i,x0,LANE_Y0,x0,LANE_Y1))
+
+# --- diagram layer: nodes
+for nid,(x,y,w,h,kind,label) in N.items():
+    V("n_"+nid, x, y, w, h, VBASE+DSTYLE[kind], _label(label.split("|")))
+
+# --- diagram layer: edges, carrying the verified waypoints
+for k,(a,b,kind,vx,ch,da,db) in enumerate(E):
+    pts = RES[(a,b)]
+    ax,ay,aw,ah = N[a][:4]; bx,by,bw,bh = N[b][:4]
+    ex_,ey_ = (pts[0][0]-ax)/aw, (pts[0][1]-ay)/ah
+    nx_,ny_ = (pts[-1][0]-bx)/bw, (pts[-1][1]-by)/bh
+    st = (EBASE + DEDGE[kind] + "exitX=%.4f;exitY=%.4f;entryX=%.4f;entryY=%.4f;" % (ex_,ey_,nx_,ny_))
+    d.append('        <mxCell id="e_%d" style="%s" edge="1" parent="L1" source="n_%s" target="n_%s">' % (k,st,a,b))
+    d.append('          <mxGeometry relative="1" as="geometry"><Array as="points">')
+    for px,py in pts[1:-1]:
+        d.append('            <mxPoint x="%.1f" y="%.1f"/>' % (px,py))
+    d.append('          </Array></mxGeometry>')
+    d.append('        </mxCell>')
+
+# --- legend
+V("lgbox",16,LEG_Y,W-32,62,"rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#CBD5E1;","","L0")
+V("lgt1",30,LEG_Y+8,100,20,"text;html=1;align=left;verticalAlign=middle;fontSize=11.5;fontStyle=1;fontColor=#0F172A;","LINE STYLE","L0")
+lx=140
+for j,(k,lab) in enumerate([("flow","internal flow / hand-off"),("sync","synchronous call"),
+                            ("poll","poll (scheme or partner is asked, repeatedly)"),("async","asynchronous / event")]):
+    d.append('        <mxCell id="lge%d" style="endArrow=blockThin;endFill=1;html=1;%s" edge="1" parent="L0">'
+             '<mxGeometry relative="1" as="geometry"><mxPoint x="%d" y="%d" as="sourcePoint"/>'
+             '<mxPoint x="%d" y="%d" as="targetPoint"/></mxGeometry></mxCell>'
+             % (j, DEDGE[k], lx, LEG_Y+20, lx+44, LEG_Y+20))
+    V("lgl%d"%j, lx+50, LEG_Y+10, len(lab)*6.2, 20,
+      "text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#475569;", lab, "L0")
+    lx += 60 + len(lab)*5.9 + 30
+V("lgt2",30,LEG_Y+38,100,20,"text;html=1;align=left;verticalAlign=middle;fontSize=11.5;fontStyle=1;fontColor=#0F172A;","BOX","L0")
+bx2=140
+for j,(kind,lab) in enumerate([("actor","cardholder / channel"),("core","core issuer platform"),("step","platform step"),
+                               ("dec","DECISION POINT"),("ext","external — scheme, partner, acquirer"),("note","regulatory clock / note")]):
+    V("lgb%d"%j, bx2, LEG_Y+40, 26, 15, "rounded=1;arcSize=20;html=1;"+DSTYLE[kind], "", "L0")
+    V("lgbl%d"%j, bx2+31, LEG_Y+38, len(lab)*6.2, 20,
+      "text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#475569;", lab, "L0")
+    bx2 += 40 + len(lab)*5.9 + 26
+
+d.append('      </root>')
+d.append('    </mxGraphModel>')
+d.append('  </diagram>')
+d.append('</mxfile>')
+
+DOUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dispute-e2e-swimlane.drawio")
+open(DOUT,"w",encoding="utf-8").write("\n".join(d))
+
+from xml.parsers import expat as _expat
+_p=_expat.ParserCreate(); _p.Parse(open(DOUT,"rb").read(),True)
+_ncell = "\n".join(d).count("<mxCell")
+print("drawio: well-formed, %d cells -> %s" % (_ncell, os.path.basename(DOUT)))

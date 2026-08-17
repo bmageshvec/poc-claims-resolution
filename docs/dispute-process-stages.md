@@ -23,7 +23,9 @@
 
 ![Dispute Claims Resolution — end-to-end swimlane](../diagrams/dispute-e2e-swimlane.svg)
 
-*Open [`diagrams/dispute-e2e-swimlane.svg`](../diagrams/dispute-e2e-swimlane.svg) full size — it is 2062 px wide.*
+*Open [`diagrams/dispute-e2e-swimlane.svg`](../diagrams/dispute-e2e-swimlane.svg) full size — it is 2062 × 1222 px.*
+
+> **Editing it.** Three files, one model. [`source/dispute-e2e-swimlane.py`](../source/dispute-e2e-swimlane.py) is the source of truth: it holds the node and edge lists, auto-routes every connector around obstructions, and asserts **0 box overlaps, 0 edge-through-box crossings and 0 label overflow** before it writes anything. It emits both the `.svg` above and [`source/dispute-e2e-swimlane.drawio`](../source/dispute-e2e-swimlane.drawio), which opens in draw.io with the lane bands, phase headers and legend on a locked **Frame** layer and the 52 boxes and 60 connectors on an editable **Diagram** layer. Nudge it in the GUI for a one-off; change the model and re-run the generator when the process itself changes — the generator wins, so GUI edits are overwritten on the next run.
 
 **How to read it.** Lanes are *who*, columns are *when*.
 

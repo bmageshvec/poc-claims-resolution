@@ -38,5 +38,4 @@ coverage/
 
 # Ignore generated Mermaid and Markdown preview artifacts
 *.svg
-*.png
 *.pdf
